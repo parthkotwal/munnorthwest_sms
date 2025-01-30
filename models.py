@@ -79,12 +79,8 @@ class Participant(db.Model):
     conference_id = db.Column(db.Integer, db.ForeignKey('conference.id'), nullable=False)
     first_name = db.Column(db.String(100), nullable=False)
     last_name = db.Column(db.String(100), nullable=False)
-    email = db.Column(db.String(120))
     phone = db.Column(db.String(20), nullable=False)
     participant_type = db.Column(db.String(50), nullable=False)  # Delegate, Advisor, Staff, Secretariat
-    committee = db.Column(db.String(100))
-    position = db.Column(db.String(100))
-    school = db.Column(db.String(200))
     created_at = db.Column(db.DateTime, default=datetime.now)
     
     # Relationships

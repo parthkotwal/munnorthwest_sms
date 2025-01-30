@@ -7,8 +7,8 @@ app = create_app()
 
 # Run the code within the app context
 with app.app_context():
-    admin = Admin(username="parthk", password="parththepig")
-    admin.set_password('securepassword123')
+    admin = Admin(username="liams", password="liamtherat")
+    admin.set_password('liamtherat')
     db.session.add(admin)
     db.session.commit()
 

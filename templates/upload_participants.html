@@ -8,13 +8,16 @@
         
         <div class="mb-8">
             <h3 class="text-lg font-medium text-gray-900 mb-4">CSV Upload</h3>
-            <form method="POST" enctype="multipart/form-data" class="space-y-4">
+            <form method="POST" enctype="multipart/form-data" class="space-y-4" id="uploadForm">
                 <div>
                     <label class="block text-sm font-medium text-gray-700">Select CSV File</label>
-                    <div class="mt-1 flex justify-center px-6 pt-5 pb-6 border-2 border-gray-300 border-dashed rounded-md">
-                        <div class="space-y-1 text-center">
+                    <div class="mt-1 flex justify-center px-6 pt-5 pb-6 border-2 border-gray-300 border-dashed rounded-md relative" 
+                         id="dropZone">
+                        <!-- Default Upload State -->
+                        <div class="space-y-1 text-center" id="uploadPrompt">
                             <svg class="mx-auto h-12 w-12 text-gray-400" stroke="currentColor" fill="none" viewBox="0 0 48 48">
-                                <path d="M28 8H12a4 4 0 00-4 4v20m32-12v8m0 0v8a4 4 0 01-4 4H12a4 4 0 01-4-4v-4m32-4l-3.172-3.172a4 4 0 00-5.656 0L28 28M8 32l9.172-9.172a4 4 0 015.656 0L28 28m0 0l4 4m4-24h8m-4-4v8m-12 4h.02" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                                <path d="M28 8H12a4 4 0 00-4 4v20m32-12v8m0 0v8a4 4 0 01-4 4H12a4 4 0 01-4-4v-4m32-4l-3.172-3.172a4 4 0 00-5.656 0L28 28M8 32l9.172-9.172a4 4 0 015.656 0L28 28m0 0l4 4m4-24h8m-4-4v8m-12 4h.02" 
+                                      stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
                             </svg>
                             <div class="flex text-sm text-gray-600">
                                 <label for="file-upload" class="relative cursor-pointer bg-white rounded-md font-medium text-blue-600 hover:text-blue-500 focus-within:outline-none focus-within:ring-2 focus-within:ring-offset-2 focus-within:ring-blue-500">
@@ -25,12 +28,29 @@
                             </div>
                             <p class="text-xs text-gray-500">CSV file up to 10MB</p>
                         </div>
+
+                        <!-- File Selected State -->
+                        <div class="hidden space-y-1 text-center w-full" id="fileSelected">
+                            <div class="flex items-center justify-center">
+                                <svg class="h-8 w-8 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                                          d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                                </svg>
+                            </div>
+                            <div class="text-sm font-medium text-gray-900" id="fileName"></div>
+                            <button type="button" 
+                                    class="text-sm text-red-600 hover:text-red-800"
+                                    onclick="clearFileSelection()">
+                                Remove file
+                            </button>
+                        </div>
                     </div>
                 </div>
 
                 <div>
                     <label class="inline-flex items-center">
-                        <input type="checkbox" name="clear_existing" value="yes" class="rounded border-gray-300 text-blue-600 shadow-sm focus:border-blue-300 focus:ring focus:ring-blue-200 focus:ring-opacity-50">
+                        <input type="checkbox" name="clear_existing" value="yes" 
+                               class="rounded border-gray-300 text-blue-600 shadow-sm focus:border-blue-300 focus:ring focus:ring-blue-200 focus:ring-opacity-50">
                         <span class="ml-2 text-sm text-gray-600">Clear existing participants before import</span>
                     </label>
                 </div>
@@ -47,7 +67,9 @@
                 </div>
 
                 <div>
-                    <button type="submit" class="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white conference-primary hover:opacity-90">
+                    <button type="submit" 
+                            class="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white conference-primary hover:opacity-90"
+                            id="submitButton" disabled>
                         Upload Participants
                     </button>
                 </div>
@@ -55,4 +77,110 @@
         </div>
     </div>
 </div>
+
+{% block scripts %}
+<script>
+    const dropZone = document.getElementById('dropZone');
+    const fileUpload = document.getElementById('file-upload');
+    const uploadPrompt = document.getElementById('uploadPrompt');
+    const fileSelected = document.getElementById('fileSelected');
+    const fileName = document.getElementById('fileName');
+    const submitButton = document.getElementById('submitButton');
+    const uploadForm = document.getElementById('uploadForm');
+
+    // Handle drag and drop events
+    ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+        dropZone.addEventListener(eventName, preventDefaults, false);
+    });
+
+    function preventDefaults(e) {
+        e.preventDefault();
+        e.stopPropagation();
+    }
+
+    ['dragenter', 'dragover'].forEach(eventName => {
+        dropZone.addEventListener(eventName, highlight, false);
+    });
+
+    ['dragleave', 'drop'].forEach(eventName => {
+        dropZone.addEventListener(eventName, unhighlight, false);
+    });
+
+    function highlight() {
+        dropZone.classList.add('border-blue-500', 'bg-blue-50');
+    }
+
+    function unhighlight() {
+        dropZone.classList.remove('border-blue-500', 'bg-blue-50');
+    }
+
+    // Handle file drop
+    dropZone.addEventListener('drop', handleDrop, false);
+
+    function handleDrop(e) {
+        const dt = e.dataTransfer;
+        const file = dt.files[0];
+        handleFile(file);
+    }
+
+    // Handle file selection via input
+    fileUpload.addEventListener('change', function(e) {
+        handleFile(e.target.files[0]);
+    });
+
+    function handleFile(file) {
+        if (file && file.name.toLowerCase().endsWith('.csv')) {
+            uploadPrompt.classList.add('hidden');
+            fileSelected.classList.remove('hidden');
+            fileName.textContent = file.name;
+            submitButton.disabled = false;
+        } else {
+            alert('Please select a CSV file');
+            clearFileSelection();
+        }
+    }
+
+    function clearFileSelection() {
+        fileUpload.value = '';
+        uploadPrompt.classList.remove('hidden');
+        fileSelected.classList.add('hidden');
+        fileName.textContent = '';
+        submitButton.disabled = true;
+    }
+
+    // AJAX Form Submission
+    uploadForm.addEventListener('submit', async function(e) {
+        e.preventDefault();
+        submitButton.disabled = true;
+        submitButton.innerHTML = `<svg class="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+        </svg> Uploading...`;
+
+        const formData = new FormData(uploadForm);
+
+        try {
+            const response = await fetch(uploadForm.action, {
+                method: 'POST',
+                body: formData
+            });
+
+            const result = await response.json();
+
+            if (response.ok) {
+                alert('File uploaded successfully!');
+                clearFileSelection();
+            } else {
+                alert(result.error || 'An error occurred. Please try again.');
+            }
+        } catch (error) {
+            alert('Upload failed. Please check your internet connection and try again.');
+        } finally {
+            submitButton.disabled = false;
+            submitButton.innerHTML = "Upload Participants";
+        }
+    });
+</script>
+    
+{% endblock %}
 {% endblock %}

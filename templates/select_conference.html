@@ -2,6 +2,18 @@
 {% block title %}Select Conference - MUN Messaging System{% endblock %}
 
 {% block content %}
+<script>
+    document.addEventListener("DOMContentLoaded", function () {
+        document.querySelectorAll('input[type="radio"]').forEach((radio) => {
+            radio.addEventListener("change", function () {
+                document.querySelectorAll("label").forEach((label) => {
+                    label.classList.remove("ring-4", "ring-blue-500");
+                });
+                this.nextElementSibling.classList.add("ring-4", "ring-blue-500");
+            });
+        });
+    });
+</script>
 <div class="flex min-h-[80vh] items-center justify-center">
     <div class="w-full max-w-lg">
         <div class="bg-white shadow-md rounded px-8 pt-6 pb-8 mb-4">
@@ -13,14 +25,14 @@
                         <input type="radio" id="conference_{{ conference.id }}" 
                                name="conference" value="{{ conference.id }}"
                                class="hidden peer">
-                        <label for="conference_{{ conference.id }}"
-                               class="block p-4 border rounded-lg cursor-pointer
-                                      peer-checked:border-4 peer-checked:border-blue-500
-                                      hover:bg-gray-50">
+                               <style> .conference-option-{{ conference.id }} {background-color: {{ conference.theme_color }};}</style>
+                               <label for="conference_{{ conference.id }}"
+                               class="block p-4 border rounded-lg cursor-pointer peer-checked:border-4 peer-checked:border-blue-500 hover:opacity-90 transition"
+                               style="background-color: {{ conference.theme_color }};">
                             <img src="{{ conference.logo_path }}" 
                                  alt="{{ conference.name }}" 
-                                 class="h-12 mb-2">
-                            <span class="block text-center font-medium">
+                                 class="h-12 mb-2 mx-auto">
+                            <span class="block text-center font-medium" style="color: white;">
                                 {{ conference.name }}
                             </span>
                         </label>
