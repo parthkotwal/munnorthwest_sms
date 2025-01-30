@@ -3,21 +3,32 @@ from flask_login import UserMixin
 from datetime import datetime
 from extensions import db
 from enum import Enum
+from werkzeug.security import generate_password_hash, check_password_hash
 
-class User(db.Model, UserMixin):
+class Admin(db.Model, UserMixin):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(150), unique=True, nullable=False)
     password = db.Column(db.String(256), nullable=False)
-    role = db.Column(db.String(50), nullable=False)  # Admin, Secretariat, etc.
+    conference_id = db.Column(db.Integer, db.ForeignKey('conference.id'))
     
     # Relationships
     sent_messages = db.relationship('Message', backref='sender', lazy=True)
-    created_templates = db.relationship('MessageTemplate', backref='creator', lazy=True)
+    conference = db.relationship('Conference', backref='admin')
+
+    # Hash password before storing it
+    def set_password(self, raw_password):
+        """Hashes and stores the password securely."""
+        self.password = generate_password_hash(raw_password)
+
+    # Verify password
+    def check_password(self, raw_password):
+        """Checks if the provided password matches the stored hash."""
+        return check_password_hash(self.password, raw_password)
 
 class ConferenceEnum(str, Enum):
     EDUMUN = "EDUMUN"
     PACMUN = "PACMUN"
-    SEATTLEMUN = "Seattle MUN"
+    SEATTLEMUN = "SeattleMUN"
     KINGMUN = "KINGMUN"
 
 class Conference(db.Model):
@@ -31,8 +42,8 @@ class Conference(db.Model):
     participants = db.relationship('Participant', backref='conference', lazy=True)
 
     @staticmethod
-    def init_conferences():
-        """Initialize the four standard conferences if they don't exist"""
+    def init_default_conferences():
+        """Initialize the standard conferences if they don't exist"""
         conferences = [
             {
                 'name': ConferenceEnum.EDUMUN,
@@ -63,14 +74,12 @@ class Conference(db.Model):
         
         db.session.commit()
 
-    def __repr__(self):
-        return f'<Conference {self.name}>'
-
 class Participant(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     conference_id = db.Column(db.Integer, db.ForeignKey('conference.id'), nullable=False)
     first_name = db.Column(db.String(100), nullable=False)
     last_name = db.Column(db.String(100), nullable=False)
+    email = db.Column(db.String(120))
     phone = db.Column(db.String(20), nullable=False)
     participant_type = db.Column(db.String(50), nullable=False)  # Delegate, Advisor, Staff, Secretariat
     committee = db.Column(db.String(100))
@@ -81,35 +90,16 @@ class Participant(db.Model):
     # Relationships
     received_messages = db.relationship('MessageRecipient', backref='participant', lazy=True)
 
-    def __repr__(self):
-        return f'<Participant {self.first_name} {self.last_name}>'
-
-class MessageTemplate(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(100), nullable=False)
-    content = db.Column(db.Text, nullable=False)
-    created_by = db.Column(db.Integer, db.ForeignKey('user.id'))
-    created_at = db.Column(db.DateTime, default=datetime.now)
-    is_default = db.Column(db.Boolean, default=False)
-    
-    def __repr__(self):
-        return f'<MessageTemplate {self.name}>'
-
 class Message(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     content = db.Column(db.Text, nullable=False)
-    sent_by = db.Column(db.Integer, db.ForeignKey('user.id'))
+    sent_by = db.Column(db.Integer, db.ForeignKey('admin.id'))
     sent_at = db.Column(db.DateTime, default=datetime.now)
     status = db.Column(db.String(20), default='pending')  # pending, sent, failed
     recipient_count = db.Column(db.Integer)
-    template_id = db.Column(db.Integer, db.ForeignKey('message_template.id'), nullable=True)
     
     # Relationships
     recipients = db.relationship('MessageRecipient', backref='message', lazy=True)
-    template = db.relationship('MessageTemplate')
-
-    def __repr__(self):
-        return f'<Message {self.id} - {self.status}>'
 
 class MessageRecipient(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -118,17 +108,3 @@ class MessageRecipient(db.Model):
     status = db.Column(db.String(20), default='pending')  # pending, sent, failed
     sent_at = db.Column(db.DateTime)
     error_message = db.Column(db.Text)
-    
-    def __repr__(self):
-        return f'<MessageRecipient {self.id} - {self.status}>'
-
-# Optional: Audit log for tracking important system events
-class AuditLog(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(db.Integer, db.ForeignKey('user.id'))
-    action = db.Column(db.String(100), nullable=False)
-    details = db.Column(db.Text)
-    timestamp = db.Column(db.DateTime, default=datetime.now())
-    
-    def __repr__(self):
-        return f'<AuditLog {self.action}>'

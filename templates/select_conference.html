@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}Select Conference - MUN Messaging System{% endblock %}
+
+{% block content %}
+<div class="flex min-h-[80vh] items-center justify-center">
+    <div class="w-full max-w-lg">
+        <div class="bg-white shadow-md rounded px-8 pt-6 pb-8 mb-4">
+            <h2 class="text-2xl font-bold mb-6 text-center text-gray-800">Select Conference</h2>
+            <form method="POST">
+                <div class="grid grid-cols-2 gap-4">
+                    {% for conference in conferences %}
+                    <div class="relative">
+                        <input type="radio" id="conference_{{ conference.id }}" 
+                               name="conference" value="{{ conference.id }}"
+                               class="hidden peer">
+                        <label for="conference_{{ conference.id }}"
+                               class="block p-4 border rounded-lg cursor-pointer
+                                      peer-checked:border-4 peer-checked:border-blue-500
+                                      hover:bg-gray-50">
+                            <img src="{{ conference.logo_path }}" 
+                                 alt="{{ conference.name }}" 
+                                 class="h-12 mb-2">
+                            <span class="block text-center font-medium">
+                                {{ conference.name }}
+                            </span>
+                        </label>
+                    </div>
+                    {% endfor %}
+                </div>
+                <div class="mt-6 text-center">
+                    <button type="submit"
+                            class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-6 rounded focus:outline-none focus:shadow-outline">
+                        Continue
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

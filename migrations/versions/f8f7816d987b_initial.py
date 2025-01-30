@@ -1,8 +1,8 @@
-"""Initial migration
+"""initial
 
-Revision ID: 838057f62fc1
+Revision ID: f8f7816d987b
 Revises: 
-Create Date: 2025-01-29 00:40:15.180915
+Create Date: 2025-01-29 16:03:53.672552
 
 """
 from alembic import op
@@ -10,7 +10,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision = '838057f62fc1'
+revision = 'f8f7816d987b'
 down_revision = None
 branch_labels = None
 depends_on = None
@@ -27,48 +27,21 @@ def upgrade():
     sa.PrimaryKeyConstraint('id'),
     sa.UniqueConstraint('name')
     )
-    op.create_table('user',
+    op.create_table('admin',
     sa.Column('id', sa.Integer(), nullable=False),
     sa.Column('username', sa.String(length=150), nullable=False),
     sa.Column('password', sa.String(length=256), nullable=False),
-    sa.Column('role', sa.String(length=50), nullable=False),
+    sa.Column('conference_id', sa.Integer(), nullable=True),
+    sa.ForeignKeyConstraint(['conference_id'], ['conference.id'], ),
     sa.PrimaryKeyConstraint('id'),
     sa.UniqueConstraint('username')
-    )
-    op.create_table('audit_log',
-    sa.Column('id', sa.Integer(), nullable=False),
-    sa.Column('user_id', sa.Integer(), nullable=True),
-    sa.Column('action', sa.String(length=100), nullable=False),
-    sa.Column('details', sa.Text(), nullable=True),
-    sa.Column('timestamp', sa.DateTime(), nullable=True),
-    sa.ForeignKeyConstraint(['user_id'], ['user.id'], ),
-    sa.PrimaryKeyConstraint('id')
-    )
-    op.create_table('committee',
-    sa.Column('id', sa.Integer(), nullable=False),
-    sa.Column('name', sa.String(length=100), nullable=False),
-    sa.Column('conference_id', sa.Integer(), nullable=False),
-    sa.Column('description', sa.Text(), nullable=True),
-    sa.Column('created_at', sa.DateTime(), nullable=True),
-    sa.ForeignKeyConstraint(['conference_id'], ['conference.id'], ),
-    sa.PrimaryKeyConstraint('id')
-    )
-    op.create_table('message_template',
-    sa.Column('id', sa.Integer(), nullable=False),
-    sa.Column('name', sa.String(length=100), nullable=False),
-    sa.Column('content', sa.Text(), nullable=False),
-    sa.Column('created_by', sa.Integer(), nullable=True),
-    sa.Column('created_at', sa.DateTime(), nullable=True),
-    sa.Column('is_default', sa.Boolean(), nullable=True),
-    sa.ForeignKeyConstraint(['created_by'], ['user.id'], ),
-    sa.PrimaryKeyConstraint('id')
     )
     op.create_table('participant',
     sa.Column('id', sa.Integer(), nullable=False),
     sa.Column('conference_id', sa.Integer(), nullable=False),
     sa.Column('first_name', sa.String(length=100), nullable=False),
     sa.Column('last_name', sa.String(length=100), nullable=False),
-    sa.Column('email', sa.String(length=120), nullable=False),
+    sa.Column('email', sa.String(length=120), nullable=True),
     sa.Column('phone', sa.String(length=20), nullable=False),
     sa.Column('participant_type', sa.String(length=50), nullable=False),
     sa.Column('committee', sa.String(length=100), nullable=True),
@@ -85,9 +58,7 @@ def upgrade():
     sa.Column('sent_at', sa.DateTime(), nullable=True),
     sa.Column('status', sa.String(length=20), nullable=True),
     sa.Column('recipient_count', sa.Integer(), nullable=True),
-    sa.Column('template_id', sa.Integer(), nullable=True),
-    sa.ForeignKeyConstraint(['sent_by'], ['user.id'], ),
-    sa.ForeignKeyConstraint(['template_id'], ['message_template.id'], ),
+    sa.ForeignKeyConstraint(['sent_by'], ['admin.id'], ),
     sa.PrimaryKeyConstraint('id')
     )
     op.create_table('message_recipient',
@@ -109,9 +80,6 @@ def downgrade():
     op.drop_table('message_recipient')
     op.drop_table('message')
     op.drop_table('participant')
-    op.drop_table('message_template')
-    op.drop_table('committee')
-    op.drop_table('audit_log')
-    op.drop_table('user')
+    op.drop_table('admin')
     op.drop_table('conference')
     # ### end Alembic commands ###

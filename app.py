@@ -21,8 +21,8 @@ def create_app():
     
     @login_manager.user_loader
     def load_user(user_id):
-        from models import User  # Avoid circular imports
-        return User.query.get(int(user_id))
+        from models import Admin  # Avoid circular imports
+        return Admin.query.get(int(user_id))
     
     migrate = Migrate(app, db)
 
@@ -30,3 +30,7 @@ def create_app():
     app.register_blueprint(routes, url_prefix='/')
 
     return app
+
+if __name__ == "__main__":
+    app = create_app()
+    app.run(debug=True)
