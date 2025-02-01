@@ -34,6 +34,15 @@ def logout():
     logout_user()
     return redirect(url_for('routes.login'))
 
+@routes.app_context_processor
+def inject_conference():
+    from models import Conference  # avoid circular import issues if needed
+    if hasattr(current_user, 'is_authenticated') and current_user.is_authenticated:
+        if current_user.conference_id:
+            conference = Conference.query.get(current_user.conference_id)
+            return {'conference': conference}
+    return {'conference': None}
+
 @routes.route('/select_conference', methods=['GET', 'POST'])
 @login_required
 def select_conference():
@@ -95,6 +104,10 @@ def upload_participants():
     conference = Conference.query.get(current_user.conference_id)
 
     if request.method == 'POST':
+        # Add debugging prints
+        print("Files in request:", request.files)
+        print("Form data:", request.form)
+        
         if 'file' not in request.files:
             return handle_response('No file uploaded', success=False)
 
@@ -104,8 +117,23 @@ def upload_participants():
 
         if file and file.filename.endswith('.csv'):
             try:
+                # Add file size check
+                if file.content_length and file.content_length > 10 * 1024 * 1024:  # 10MB limit
+                    return handle_response('File too large. Maximum size is 10MB', success=False)
+                
                 csv_file = TextIOWrapper(file, encoding='utf-8')
                 csv_reader = csv.DictReader(csv_file)
+                
+                # Validate CSV structure
+                required_fields = {'first_name', 'last_name', 'phone', 'participant_type'}
+                header_fields = set(csv_reader.fieldnames or [])
+                
+                if not required_fields.issubset(header_fields):
+                    missing_fields = required_fields - header_fields
+                    return handle_response(
+                        f'Missing required columns: {", ".join(missing_fields)}',
+                        success=False
+                    )
                 
                 # Clear existing participants if checkbox is checked
                 if request.form.get('clear_existing') == 'yes':
@@ -116,33 +144,95 @@ def upload_participants():
                 db.session.commit()
                 
                 message = (f'Successfully imported {results["success"]} participants. '
-                           f'{results["errors"]} errors occurred.')
+                          f'{results["errors"]} errors occurred.')
 
-                # Handle AJAX request separately
-                if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
-                    return handle_response(message, success=True, error_messages=results['error_messages'])
-
-                flash(message, 'success')
-                
-                # Show up to 5 errors in Flask Flash messages
-                if results['error_messages']:
-                    for error in results['error_messages'][:5]:
-                        flash(error, 'warning')
-
-                return redirect(url_for('routes.manage_participants'))
+                print(message)
+                return handle_response(
+                    message,
+                    success=True,
+                    error_messages=results['error_messages']
+                )
             
             except Exception as e:
+                print(f"Error processing upload: {str(e)}")  # Add error logging
+                db.session.rollback()  # Add rollback on error
                 return handle_response(f'Error processing CSV file: {str(e)}', success=False)
+        else:
+            return handle_response('Invalid file type. Please upload a CSV file.', success=False)
 
     return render_template('upload_participants.html', conference=conference)
 
 def handle_response(message, success=True, error_messages=None):
+    response_data = {
+        'success': success,
+        'message': message,
+        'errors': error_messages or []
+    }
+    
     if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
-        return jsonify({'success': success, 'message': message, 'errors': error_messages or []}), (200 if success else 400)
+        return jsonify(response_data), (200 if success else 400)
     
     flash(message, 'success' if success else 'danger')
-    return redirect(request.url)
+    return redirect(url_for('routes.manage_participants') if success else request.url)
 
+def process_participant_upload(csv_reader, conference_id):
+    """Process CSV upload and return results summary"""
+    success_count = 0
+    error_count = 0
+    error_messages = []
+    
+    for row_num, row in enumerate(csv_reader, start=2):  # Start at 2 to account for header row
+        try:
+            # Validate required fields
+            if not all(row.get(field, '').strip() for field in ['first_name', 'last_name', 'phone']):
+                raise ValueError('Missing required fields')
+            
+            # Validate participant type
+            participant_type = row.get('participant_type', '').strip()
+            valid_types = {'Delegate', 'Advisor', 'Staff', 'Secretariat'}
+            if participant_type not in valid_types:
+                raise ValueError(f'Invalid participant type. Must be one of: {", ".join(valid_types)}')
+            
+            # Clean and validate phone number
+            phone = clean_phone_number(row.get('phone', ''))
+            if not phone:
+                raise ValueError('Invalid phone number format')
+            
+            # Check for existing participant with same phone number
+            existing = Participant.query.filter_by(
+                conference_id=conference_id,
+                phone=phone
+            ).first()
+            
+            if existing:
+                # Update existing participant
+                existing.first_name = row['first_name'].strip()
+                existing.last_name = row['last_name'].strip()
+                existing.participant_type = participant_type
+            else:
+                # Create new participant
+                participant = Participant(
+                    conference_id=conference_id,
+                    first_name=row['first_name'].strip(),
+                    last_name=row['last_name'].strip(),
+                    phone=phone,
+                    participant_type=participant_type
+                )
+                db.session.add(participant)
+            
+            success_count += 1
+            
+        except Exception as e:
+            error_count += 1
+            error_messages.append(
+                f"Row {row_num}: Error processing {row.get('first_name', '')} {row.get('last_name', '')}: {str(e)}"
+            )
+    
+    return {
+        'success': success_count,
+        'errors': error_count,
+        'error_messages': error_messages
+    }
 
 @routes.route('/manage_participants')
 @login_required
@@ -175,41 +265,6 @@ def manage_participants():
                          participant_types=participant_types,
                          search=search,
                          current_type=participant_type)
-
-def process_participant_upload(csv_reader, conference_id):
-    """Process CSV upload and return results summary"""
-    success_count = 0
-    error_count = 0
-    error_messages = []
-    
-    for row in csv_reader:
-        try:
-            phone = clean_phone_number(row.get('phone', ''))
-            if not phone:
-                raise ValueError('Invalid phone number')
-            
-            participant = Participant(
-                conference_id=conference_id,
-                first_name=row.get('first_name', '').strip(),
-                last_name=row.get('last_name', '').strip(),
-                phone=phone,
-                participant_type=row.get('participant_type', '').strip(),
-            )
-            
-            db.session.add(participant)
-            success_count += 1
-            
-        except Exception as e:
-            error_count += 1
-            error_messages.append(
-                f"Error processing {row.get('first_name', '')} {row.get('last_name', '')}: {str(e)}"
-            )
-    
-    return {
-        'success': success_count,
-        'errors': error_count,
-        'error_messages': error_messages
-    }
 
 @routes.route('/participant/<int:participant_id>', methods=['GET'])
 @login_required

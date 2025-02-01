@@ -57,12 +57,12 @@
 
                 <div class="bg-gray-50 p-4 rounded-md">
                     <h4 class="text-sm font-medium text-gray-900 mb-2">Expected CSV Format</h4>
-                    <p class="text-sm text-gray-500">Your CSV should include these columns:</p>
+                    <p class="text-sm text-gray-500">Your CSV should include these columns (exact name!!). If you do not have the exact names, please change them so and then upload it:</p>
                     <ul class="list-disc list-inside text-sm text-gray-500 mt-1">
                         <li>first_name</li>
                         <li>last_name</li>
                         <li>phone</li>
-                        <li>participant_type (Delegate/Advisor/Staff/Secretariat)</li>
+                        <li>participant_type</li>
                     </ul>
                 </div>
 
@@ -159,22 +159,28 @@
 
         const formData = new FormData(uploadForm);
 
+        // In your upload_participants.html, replace the try-catch block with:
+
         try {
             const response = await fetch(uploadForm.action, {
                 method: 'POST',
-                body: formData
+                body: formData,
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest'  // Add this header explicitly
+                }
             });
 
             const result = await response.json();
+            console.log('Response:', result);  // Add logging
 
             if (response.ok) {
-                alert('File uploaded successfully!');
-                clearFileSelection();
+                window.location.href = '/manage_participants';  // Redirect on success
             } else {
-                alert(result.error || 'An error occurred. Please try again.');
+                alert(result.message || 'An error occurred during upload.');
             }
         } catch (error) {
-            alert('Upload failed. Please check your internet connection and try again.');
+            console.error('Upload error:', error);  // Add detailed error logging
+            alert('Upload failed: ' + error.message);
         } finally {
             submitButton.disabled = false;
             submitButton.innerHTML = "Upload Participants";

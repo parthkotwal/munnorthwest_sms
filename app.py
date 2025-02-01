@@ -22,7 +22,7 @@ def create_app():
     @login_manager.user_loader
     def load_user(user_id):
         from models import Admin  # Avoid circular imports
-        return Admin.query.get(int(user_id))
+        return db.session.get(Admin, int(user_id))
     
     migrate = Migrate(app, db)
 

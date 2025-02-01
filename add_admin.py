@@ -1,6 +1,6 @@
 from app import create_app
 from extensions import db
-from models import Admin
+from models import Admin, Participant
 
 # Initialize the app
 app = create_app()
@@ -11,5 +11,7 @@ with app.app_context():
     admin.set_password('liamtherat')
     db.session.add(admin)
     db.session.commit()
+    # Participant.query.delete()
+    # db.session.commit() 
 
 print("Admin created successfully!")
