@@ -2,6 +2,7 @@ from flask import Blueprint, render_template, redirect, url_for, request, flash,
 from flask_login import LoginManager, login_user, login_required, logout_user, current_user
 from werkzeug.security import check_password_hash
 from models import Admin, Conference, Participant, Message, MessageRecipient
+from forms import LoginForm
 from extensions import db
 import csv
 from io import TextIOWrapper
@@ -10,11 +11,14 @@ from datetime import datetime
 
 routes = Blueprint('routes', __name__)
 
+
 @routes.route('/login', methods=['GET', 'POST'])
 def login():
-    if request.method == 'POST':
-        username = request.form['username']
-        password = request.form['password']
+    form = LoginForm()
+    
+    if form.validate_on_submit():  # Ensures CSRF token is checked
+        username = form.username.data
+        password = form.password.data
         admin = Admin.query.filter_by(username=username).first()
         
         if admin and check_password_hash(admin.password, password):
@@ -22,11 +26,11 @@ def login():
             if not admin.conference_id:
                 return redirect(url_for('routes.select_conference'))
             return redirect(url_for('routes.dashboard'))
-        
+
         flash('Invalid credentials', 'danger')
     
     conference = None
-    return render_template('login.html', conference=conference)
+    return render_template('login.html', form=form, conference=conference)
 
 @routes.route('/logout')
 @login_required
@@ -99,28 +103,40 @@ def dashboard():
 @login_required
 def upload_participants():
     if not current_user.conference_id:
-        return redirect(url_for('routes.select_conference'))
-
-    conference = Conference.query.get(current_user.conference_id)
+        return jsonify({
+            'success': False,
+            'message': 'No conference selected'
+        }), 400
 
     if request.method == 'POST':
-        # Add debugging prints
-        print("Files in request:", request.files)
-        print("Form data:", request.form)
-        
-        if 'file' not in request.files:
-            return handle_response('No file uploaded', success=False)
+        try:
+            if 'file' not in request.files:
+                return jsonify({
+                    'success': False,
+                    'message': 'No file uploaded'
+                }), 400
 
-        file = request.files['file']
-        if file.filename == '':
-            return handle_response('No file selected', success=False)
+            file = request.files['file']
+            if file.filename == '':
+                return jsonify({
+                    'success': False,
+                    'message': 'No file selected'
+                }), 400
 
-        if file and file.filename.endswith('.csv'):
+            if not file.filename.endswith('.csv'):
+                return jsonify({
+                    'success': False,
+                    'message': 'Invalid file type. Please upload a CSV file.'
+                }), 400
+
+            # Check file size (10MB limit)
+            if file.content_length and file.content_length > 10 * 1024 * 1024:
+                return jsonify({
+                    'success': False,
+                    'message': 'File too large. Maximum size is 10MB'
+                }), 400
+
             try:
-                # Add file size check
-                if file.content_length and file.content_length > 10 * 1024 * 1024:  # 10MB limit
-                    return handle_response('File too large. Maximum size is 10MB', success=False)
-                
                 csv_file = TextIOWrapper(file, encoding='utf-8')
                 csv_reader = csv.DictReader(csv_file)
                 
@@ -130,36 +146,39 @@ def upload_participants():
                 
                 if not required_fields.issubset(header_fields):
                     missing_fields = required_fields - header_fields
-                    return handle_response(
-                        f'Missing required columns: {", ".join(missing_fields)}',
-                        success=False
-                    )
-                
+                    return jsonify({
+                        'success': False,
+                        'message': f'Missing required columns: {", ".join(missing_fields)}'
+                    }), 400
+
                 # Clear existing participants if checkbox is checked
                 if request.form.get('clear_existing') == 'yes':
                     Participant.query.filter_by(conference_id=current_user.conference_id).delete()
-                
+
                 results = process_participant_upload(csv_reader, current_user.conference_id)
-                
                 db.session.commit()
-                
-                message = (f'Successfully imported {results["success"]} participants. '
-                          f'{results["errors"]} errors occurred.')
 
-                print(message)
-                return handle_response(
-                    message,
-                    success=True,
-                    error_messages=results['error_messages']
-                )
-            
+                return jsonify({
+                    'success': True,
+                    'message': f'Successfully imported {results["success"]} participants. {results["errors"]} errors occurred.',
+                    'errors': results['error_messages']
+                })
+
             except Exception as e:
-                print(f"Error processing upload: {str(e)}")  # Add error logging
-                db.session.rollback()  # Add rollback on error
-                return handle_response(f'Error processing CSV file: {str(e)}', success=False)
-        else:
-            return handle_response('Invalid file type. Please upload a CSV file.', success=False)
+                db.session.rollback()
+                return jsonify({
+                    'success': False,
+                    'message': f'Error processing CSV file: {str(e)}'
+                }), 400
 
+        except Exception as e:
+            return jsonify({
+                'success': False,
+                'message': f'Server error: {str(e)}'
+            }), 500
+
+    # GET request - render template
+    conference = Conference.query.get(current_user.conference_id)
     return render_template('upload_participants.html', conference=conference)
 
 def handle_response(message, success=True, error_messages=None):
@@ -298,10 +317,26 @@ def add_participant():
 def update_participant(participant_id):
     participant = Participant.query.get_or_404(participant_id)
     data = request.get_json()
+
+    if not data:
+        return jsonify({'status': 'error', 'message': 'Invalid data'}), 400
+
     participant.first_name = data['first_name']
     participant.last_name = data['last_name']
     participant.phone = clean_phone_number(data['phone'])
-    participant.participant
+    participant.participant_type = data['participant_type']
+
+    db.session.commit()
+
+    return jsonify({'status': 'success'})
+
+@routes.route('/participant/<int:participant_id>', methods=['DELETE'])
+@login_required
+def delete_participant(participant_id):
+    participant = Participant.query.get_or_404(participant_id)
+    db.session.delete(participant)
+    db.session.commit()
+    return jsonify({'status': 'success', 'message': 'Participant deleted'})
 
 def clean_phone_number(phone):
     """Clean and validate phone number"""

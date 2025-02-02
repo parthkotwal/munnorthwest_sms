@@ -44,6 +44,7 @@
                                 Remove file
                             </button>
                         </div>
+
                     </div>
                 </div>
 
@@ -128,17 +129,17 @@
         handleFile(e.target.files[0]);
     });
 
-    function handleFile(file) {
-        if (file && file.name.toLowerCase().endsWith('.csv')) {
-            uploadPrompt.classList.add('hidden');
-            fileSelected.classList.remove('hidden');
-            fileName.textContent = file.name;
-            submitButton.disabled = false;
-        } else {
-            alert('Please select a CSV file');
-            clearFileSelection();
-        }
-    }
+    // function handleFile(file) {
+    //     if (file && file.name.toLowerCase().endsWith('.csv')) {
+    //         uploadPrompt.classList.add('hidden');
+    //         fileSelected.classList.remove('hidden');
+    //         fileName.textContent = file.name;
+    //         submitButton.disabled = false;
+    //     } else {
+    //         alert('Please select a CSV file');
+    //         clearFileSelection();
+    //     }
+    // }
 
     function clearFileSelection() {
         fileUpload.value = '';
@@ -148,44 +149,98 @@
         submitButton.disabled = true;
     }
 
+    function getCSRFToken() {
+        return document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+    }
+
     // AJAX Form Submission
-    uploadForm.addEventListener('submit', async function(e) {
+    uploadForm.addEventListener("submit", function (e) {
         e.preventDefault();
+        
+        // Disable submit button and show loading state
         submitButton.disabled = true;
-        submitButton.innerHTML = `<svg class="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-        </svg> Uploading...`;
-
-        const formData = new FormData(uploadForm);
-
-        // In your upload_participants.html, replace the try-catch block with:
-
-        try {
-            const response = await fetch(uploadForm.action, {
-                method: 'POST',
-                body: formData,
-                headers: {
-                    'X-Requested-With': 'XMLHttpRequest'  // Add this header explicitly
-                }
-            });
-
-            const result = await response.json();
-            console.log('Response:', result);  // Add logging
-
-            if (response.ok) {
-                window.location.href = '/manage_participants';  // Redirect on success
-            } else {
-                alert(result.message || 'An error occurred during upload.');
+        submitButton.innerHTML = 'Uploading...';
+        
+        let formData = new FormData(this);
+        
+        fetch("/upload_participants", {
+            method: "POST",
+            body: formData,
+            headers: {
+                "X-Requested-With": "XMLHttpRequest",
+                "X-CSRFToken": getCSRFToken()  // Add CSRF token
+            },
+            credentials: 'same-origin'  // Important for CSRF
+        })
+        .then(response => {
+            if (!response.ok) {
+                // Try to parse response as JSON first
+                return response.text().then(text => {
+                    try {
+                        // Try to parse as JSON
+                        const json = JSON.parse(text);
+                        throw new Error(json.message || 'Upload failed');
+                    } catch (e) {
+                        // If not JSON, it's probably an HTML error page
+                        if (text.includes('<!doctype')) {
+                            throw new Error('Server error occurred. Please try again.');
+                        }
+                        throw new Error(text || 'Upload failed');
+                    }
+                });
             }
-        } catch (error) {
-            console.error('Upload error:', error);  // Add detailed error logging
-            alert('Upload failed: ' + error.message);
-        } finally {
+            return response.json();
+        })
+        .then(data => {
+            if (data.success) {
+                // Show success message and redirect
+                alert("Upload successful!");
+                window.location.href = '/manage_participants';
+            } else {
+                // Show error message
+                alert("Upload failed: " + data.message);
+                if (data.errors && data.errors.length > 0) {
+                    console.error("Detailed errors:", data.errors);
+                }
+            }
+        })
+        .catch(error => {
+            alert(error.message || "An unexpected error occurred.");
+            console.error("Upload error:", error);
+        })
+        .finally(() => {
+            // Re-enable submit button and restore original text
             submitButton.disabled = false;
-            submitButton.innerHTML = "Upload Participants";
-        }
+            submitButton.innerHTML = 'Upload Participants';
+        });
     });
+
+    // Also update the file handling code to be more robust
+    function handleFile(file) {
+        if (!file) {
+            alert('No file selected');
+            clearFileSelection();
+            return;
+        }
+
+        if (!file.name.toLowerCase().endsWith('.csv')) {
+            alert('Please select a CSV file');
+            clearFileSelection();
+            return;
+        }
+
+        // Check file size (10MB)
+        if (file.size > 10 * 1024 * 1024) {
+            alert('File size must be less than 10MB');
+            clearFileSelection();
+            return;
+        }
+
+        uploadPrompt.classList.add('hidden');
+        fileSelected.classList.remove('hidden');
+        fileName.textContent = file.name;
+        submitButton.disabled = false;
+    }
 </script>
     
 {% endblock %}

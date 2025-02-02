@@ -4,10 +4,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}MUNNW Messaging System{% endblock %}</title>
+    <title>{% block title %}MUNNW SMS System{% endblock %}</title>
     <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/alpinejs@2.8.2/dist/alpine.min.js" defer></script>
     <link href="https://fonts.googleapis.com/css2?family=Reem+Kufi&display=swap" rel="stylesheet">
+    <meta name="csrf-token" content="{{ csrf_token() }}">
     <style>
         body {font-family: 'Reem Kufi', sans-serif;}
         [x-cloak] { display: none !important; }
@@ -28,7 +29,7 @@
             <div class="flex items-center justify-between">
                 <div class="flex items-center">
                     <img src="{{ conference.logo_path }}" alt="{{ conference.name }}" class="h-8">
-                    <span class="ml-3 font-semibold">{{ conference.name }} Admin</span>
+                    <span class="ml-3 font-semibold">{{ conference.name }} SMS Admin</span>
                 </div>
                 <div class="flex items-center space-x-4">
                     <a href="{{ url_for('routes.dashboard') }}" class="hover:text-gray-200">Dashboard</a>
@@ -56,6 +57,7 @@
         {% endwith %}
 
         {% block content %}{% endblock %}
+        {% block scripts %}{% endblock %}
     </div>
 </body>
 </html>

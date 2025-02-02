@@ -1,9 +1,12 @@
-from flask import Flask
+from flask import Flask, redirect, url_for, request, jsonify
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager
 from flask_migrate import Migrate
 from extensions import db
+from flask_wtf.csrf import CSRFProtect
 
+
+csrf = CSRFProtect()
 def create_app():
     app = Flask(__name__)
     app.config['SECRET_KEY'] = 'your_secret_key'
@@ -13,6 +16,7 @@ def create_app():
 
     # Initialize the db with the app here
     db.init_app(app)
+    csrf.init_app(app)
     
     # Initialize the login manager
     login_manager = LoginManager()
@@ -23,7 +27,7 @@ def create_app():
     def load_user(user_id):
         from models import Admin  # Avoid circular imports
         return db.session.get(Admin, int(user_id))
-    
+
     migrate = Migrate(app, db)
 
     from routes import routes
