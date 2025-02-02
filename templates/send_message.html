@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block title %}Send Message - {{ conference.name }}{% endblock %}
+
+{% block content %}
+<div class="bg-white rounded-lg shadow p-6">
+    <h2 class="text-xl font-semibold mb-4">Send Message</h2>
+    
+    <form id="send-message-form" class="space-y-4">
+        <label class="block text-sm font-medium text-gray-700">Select Recipients</label>
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+            {% for type in ["Delegate", "Advisor", "Staff", "Secretariat"] %}
+            <label class="flex items-center space-x-2">
+                <input type="checkbox" name="recipient_types" value="{{ type }}" class="form-checkbox h-5 w-5 text-blue-600">
+                <span class="text-gray-700">{{ type }}</span>
+            </label>
+            {% endfor %}
+        </div>
+        
+        <label class="block text-sm font-medium text-gray-700">Message</label>
+        <textarea id="message-content" name="message" rows="4" class="w-full border rounded p-2"></textarea>
+        <p class="text-sm text-gray-500">Use placeholders: <code>{{ '{first_name}' }}</code>, <code>{{ '{last_name}' }}</code>, <code>{{ '{phone}' }}</code>, <code>{{ '{participant_type}' }}</code></p>
+        
+        <button type="submit" class="px-4 py-2 text-white conference-primary rounded shadow">Send Message</button>
+    </form>
+    
+    <div id="response" class="mt-4 hidden p-4 rounded border"></div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.getElementById("send-message-form").addEventListener("submit", function(event) {
+    event.preventDefault();
+    
+    let formData = {
+        message: document.getElementById("message-content").value,
+        recipient_types: Array.from(document.querySelectorAll("input[name='recipient_types']:checked"))
+            .map(cb => cb.value)
+    };
+    
+    fetch("{{ url_for('routes.send_message') }}", {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+            "X-CSRFToken": document.querySelector("meta[name='csrf-token']").getAttribute("content")
+        },
+        body: JSON.stringify(formData)
+    })
+    .then(response => response.json())
+    .then(data => {
+        let responseDiv = document.getElementById("response");
+        responseDiv.classList.remove("hidden");
+        responseDiv.classList.add(data.success ? "bg-green-100 text-green-700 border-green-400" : "bg-red-100 text-red-700 border-red-400");
+        responseDiv.textContent = data.message;
+    })
+    .catch(error => console.error("Error:", error));
+});
+</script>
+{% endblock %}

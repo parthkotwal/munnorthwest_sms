@@ -1,16 +1,27 @@
-from flask import Blueprint, render_template, redirect, url_for, request, flash, jsonify
+from flask import Blueprint, render_template, redirect, url_for, request, flash, jsonify, Response
 from flask_login import LoginManager, login_user, login_required, logout_user, current_user
 from werkzeug.security import check_password_hash
 from models import Admin, Conference, Participant, Message, MessageRecipient
 from forms import LoginForm
 from extensions import db
-import csv
 from io import TextIOWrapper
-import re
 from datetime import datetime
+from twilio.rest import Client
+from dotenv import load_dotenv
+import os
+import csv
+import re
 
 routes = Blueprint('routes', __name__)
 
+load_dotenv(".env")
+twilio_client = Client(os.environ.get('TWILIO_ACCOUNT_SID'), os.environ.get('TWILIO_AUTH_TOKEN'))
+twilio_number:str = os.environ.get('TWILIO_PHONE_NUMBER')
+
+# Initialize the database with default conferences
+@routes.before_app_request
+def initialize_conferences():
+    Conference.init_default_conferences()
 
 @routes.route('/login', methods=['GET', 'POST'])
 def login():
@@ -338,7 +349,7 @@ def delete_participant(participant_id):
     db.session.commit()
     return jsonify({'status': 'success', 'message': 'Participant deleted'})
 
-def clean_phone_number(phone):
+def clean_phone_number(phone:str) -> str:
     """Clean and validate phone number"""
     phone = re.sub(r'\D', '', phone)
     if len(phone) == 10:
@@ -349,7 +360,95 @@ def clean_phone_number(phone):
         return phone
     return None
 
-# Initialize the database with default conferences
-@routes.before_app_request
-def initialize_conferences():
-    Conference.init_default_conferences()
+@routes.route('/send_message', methods=['GET', 'POST'])
+@login_required
+def send_message():
+    if not current_user.conference_id:
+        return jsonify({'success': False, 'message': 'No conference selected'}), 400
+    
+    if request.method == 'GET':
+        return render_template('send_message.html', conference=current_user.conference)
+    
+    data = request.get_json()
+    message_content = data.get('message', '').strip()
+    recipient_types = data.get('recipient_types', [])
+    
+    if not message_content or not recipient_types:
+        return jsonify({'success': False, 'message': 'Message content and at least one recipient type are required'}), 400
+    
+    valid_types = {'Delegate', 'Advisor', 'Staff', 'Secretariat'}
+    selected_types = set(recipient_types).intersection(valid_types)
+    
+    if not selected_types:
+        return jsonify({'success': False, 'message': 'Invalid recipient types selected'}), 400
+    
+    recipients = Participant.query.filter(
+        Participant.conference_id == current_user.conference_id,
+        Participant.participant_type.in_(list(selected_types))
+    ).all()
+    
+    if not recipients:
+        return jsonify({'success': False, 'message': 'No recipients found for the selected categories'}), 400
+    
+    sent_count = 0
+    failed_count = 0
+    errors = []
+    
+    # Store message template once
+    message_entry = Message(
+        content=message_content,
+        sent_by=current_user.id,
+        recipient_count=len(recipients),
+        status='sent'
+    )
+    db.session.add(message_entry)
+    db.session.commit()
+    
+    for recipient in recipients:
+        try:
+            personalized_message = message_content.format(
+                first_name=recipient.first_name,
+                last_name=recipient.last_name,
+                phone=recipient.phone,
+                participant_type=recipient.participant_type
+            )
+            
+            response = send_sms_twilio(recipient.phone, personalized_message)
+            
+            if response['status'] == 'sent':
+                message_recipient = MessageRecipient(
+                    message_id=message_entry.id,
+                    participant_id=recipient.id,
+                    status='sent',
+                    sent_at=datetime.now()
+                )
+                db.session.add(message_recipient)
+                sent_count += 1
+            else:
+                failed_count += 1
+                errors.append(f"Failed to send message to {recipient.first_name} {recipient.last_name}: {response['error']}")
+                
+        except Exception as e:
+            failed_count += 1
+            errors.append(f"Error processing {recipient.first_name} {recipient.last_name}: {str(e)}")
+    
+    db.session.commit()
+    
+    return jsonify({
+        'success': True,
+        'message': f'Messages sent: {sent_count}, Failed: {failed_count}',
+        'errors': errors
+    })
+
+def send_sms_twilio(to:str, message:str):
+    """Send SMS using Twilio API."""
+    try:
+        message = twilio_client.messages.create(
+            from_=twilio_number,
+            to=to,
+            body=message
+        )
+        return {'status': 'sent', 'sid': message.sid}
+    except Exception as e:
+        return {'status': 'failed', 'error': str(e)}
+    
