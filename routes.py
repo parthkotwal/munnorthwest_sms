@@ -365,36 +365,57 @@ def clean_phone_number(phone:str) -> str:
 def send_message():
     if not current_user.conference_id:
         return jsonify({'success': False, 'message': 'No conference selected'}), 400
-    
+
     if request.method == 'GET':
-        return render_template('send_message.html', conference=current_user.conference)
-    
+        # Fetch all secretariat members for the conference
+        secretariat_members = Participant.query.filter_by(
+            conference_id=current_user.conference_id,
+            participant_type="Secretariat"
+        ).all()
+
+        return render_template(
+            'send_message.html',
+            conference=current_user.conference,
+            secretariat_members=secretariat_members
+        )
+
     data = request.get_json()
     message_content = data.get('message', '').strip()
     recipient_types = data.get('recipient_types', [])
-    
+
     if not message_content or not recipient_types:
         return jsonify({'success': False, 'message': 'Message content and at least one recipient type are required'}), 400
-    
+
     valid_types = {'Delegate', 'Advisor', 'Staff', 'Secretariat'}
     selected_types = set(recipient_types).intersection(valid_types)
-    
-    if not selected_types:
-        return jsonify({'success': False, 'message': 'Invalid recipient types selected'}), 400
-    
+
+    # Collect individual secretariat selections separately
+    secretariat_selected = "Secretariat" in recipient_types
+    individual_secretariat_names = [r for r in recipient_types if r not in valid_types]
+
+    # Query standard participant types
     recipients = Participant.query.filter(
         Participant.conference_id == current_user.conference_id,
         Participant.participant_type.in_(list(selected_types))
     ).all()
-    
+
+    # Query individually selected secretariat members
+    if individual_secretariat_names:
+        secretariat_recipients = Participant.query.filter(
+            Participant.conference_id == current_user.conference_id,
+            Participant.participant_type == "Secretariat",
+            Participant.first_name.in_([name.split()[0] for name in individual_secretariat_names]),
+            Participant.last_name.in_([name.split()[1] for name in individual_secretariat_names if " " in name])
+        ).all()
+        recipients.extend(secretariat_recipients)
+
     if not recipients:
         return jsonify({'success': False, 'message': 'No recipients found for the selected categories'}), 400
-    
+
     sent_count = 0
     failed_count = 0
     errors = []
-    
-    # Store message template once
+
     message_entry = Message(
         content=message_content,
         sent_by=current_user.id,
@@ -403,7 +424,7 @@ def send_message():
     )
     db.session.add(message_entry)
     db.session.commit()
-    
+
     for recipient in recipients:
         try:
             personalized_message = message_content.format(
@@ -412,9 +433,9 @@ def send_message():
                 phone=recipient.phone,
                 participant_type=recipient.participant_type
             )
-            
+
             response = send_sms_twilio(recipient.phone, personalized_message)
-            
+
             if response['status'] == 'sent':
                 message_recipient = MessageRecipient(
                     message_id=message_entry.id,
@@ -427,18 +448,19 @@ def send_message():
             else:
                 failed_count += 1
                 errors.append(f"Failed to send message to {recipient.first_name} {recipient.last_name}: {response['error']}")
-                
+
         except Exception as e:
             failed_count += 1
             errors.append(f"Error processing {recipient.first_name} {recipient.last_name}: {str(e)}")
-    
+
     db.session.commit()
-    
+
     return jsonify({
         'success': True,
         'message': f'Messages sent: {sent_count}, Failed: {failed_count}',
         'errors': errors
     })
+
 
 def send_sms_twilio(to:str, message:str):
     """Send SMS using Twilio API."""

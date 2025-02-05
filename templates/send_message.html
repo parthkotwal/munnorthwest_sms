@@ -8,18 +8,37 @@
     <form id="send-message-form" class="space-y-4">
         <label class="block text-sm font-medium text-gray-700">Select Recipients</label>
         <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <!-- Select All Checkbox -->
+            <label class="flex items-center space-x-2">
+                <input type="checkbox" id="select-all" class="form-checkbox h-5 w-5 text-blue-600">
+                <span class="text-gray-700 font-semibold">Select All</span>
+            </label>
+
             {% for type in ["Delegate", "Advisor", "Staff", "Secretariat"] %}
             <label class="flex items-center space-x-2">
-                <input type="checkbox" name="recipient_types" value="{{ type }}" class="form-checkbox h-5 w-5 text-blue-600">
+                <input type="checkbox" name="recipient_types" value="{{ type }}" class="form-checkbox h-5 w-5 text-blue-600 recipient-checkbox">
                 <span class="text-gray-700">{{ type }}</span>
             </label>
             {% endfor %}
         </div>
+
+        <!-- Individual Secretariat Members (Initially Hidden) -->
+        <div id="secretariat-members" class="grid grid-cols-2 md:grid-cols-4 gap-4 mt-2 hidden">
+            {% for member in secretariat_members %}
+            <label class="flex items-center space-x-2">
+                <input type="checkbox" name="recipient_types" value="{{ member.first_name }} {{ member.last_name }}" class="form-checkbox h-5 w-5 text-blue-600 secretariat-member">
+                <span class="text-gray-700">{{ member.first_name }} {{ member.last_name }}</span>
+            </label>
+            {% endfor %}
+        </div>        
         
         <label class="block text-sm font-medium text-gray-700">Message</label>
         <textarea id="message-content" name="message" rows="4" class="w-full border rounded p-2"></textarea>
-        <p class="text-sm text-gray-500">Use placeholders: <code>{{ '{first_name}' }}</code>, <code>{{ '{last_name}' }}</code>, <code>{{ '{phone}' }}</code>, <code>{{ '{participant_type}' }}</code></p>
-        
+        <p id="char-count" class="text-sm text-gray-500">Characters: 0</p>
+        <p class="text-sm text-gray-500">
+            Use placeholders: <code>{{ '{first_name}' }}</code>, <code>{{ '{last_name}' }}</code>, <code>{{ '{phone}' }}</code>, <code>{{ '{participant_type}' }}</code>
+        </p>
+
         <button type="submit" class="px-4 py-2 text-white conference-primary rounded shadow">Send Message</button>
     </form>
     
@@ -29,31 +48,69 @@
 
 {% block scripts %}
 <script>
-document.getElementById("send-message-form").addEventListener("submit", function(event) {
-    event.preventDefault();
+document.addEventListener("DOMContentLoaded", function () {
+    const messageBox = document.getElementById("message-content");
+    const charCount = document.getElementById("char-count");
+    const selectAllCheckbox = document.getElementById("select-all");
+    const recipientCheckboxes = document.querySelectorAll(".recipient-checkbox");
+    const secretariatCheckbox = document.querySelector("input[value='Secretariat']");
+    const secretariatMembersDiv = document.getElementById("secretariat-members");
+    const secretariatMembersCheckboxes = document.querySelectorAll(".secretariat-member");
+
+    // Character count update
+    messageBox.addEventListener("input", function () {
+        charCount.textContent = `Characters: ${messageBox.value.length}`;
+    });
+
+    // Toggle Secretariat Members
+    secretariatCheckbox.addEventListener("change", function () {
+        if (this.checked) {
+            secretariatMembersDiv.classList.remove("hidden");
+        } else {
+            secretariatMembersDiv.classList.add("hidden");
+            secretariatMembersCheckboxes.forEach(cb => cb.checked = false);
+        }
+    });
+
+    // Select All functionality
+    selectAllCheckbox.addEventListener("change", function () {
+        const isChecked = this.checked;
+        recipientCheckboxes.forEach(cb => {
+            cb.checked = isChecked;
+            if (cb.value === "Secretariat") {
+                cb.dispatchEvent(new Event("change"));
+            }
+        });
+        secretariatMembersCheckboxes.forEach(cb => cb.checked = isChecked);
+    });
     
-    let formData = {
-        message: document.getElementById("message-content").value,
-        recipient_types: Array.from(document.querySelectorAll("input[name='recipient_types']:checked"))
-            .map(cb => cb.value)
-    };
-    
-    fetch("{{ url_for('routes.send_message') }}", {
-        method: "POST",
-        headers: {
-            "Content-Type": "application/json",
-            "X-CSRFToken": document.querySelector("meta[name='csrf-token']").getAttribute("content")
-        },
-        body: JSON.stringify(formData)
-    })
-    .then(response => response.json())
-    .then(data => {
-        let responseDiv = document.getElementById("response");
-        responseDiv.classList.remove("hidden");
-        responseDiv.classList.add(data.success ? "bg-green-100 text-green-700 border-green-400" : "bg-red-100 text-red-700 border-red-400");
-        responseDiv.textContent = data.message;
-    })
-    .catch(error => console.error("Error:", error));
+    // Handle form submission
+    document.getElementById("send-message-form").addEventListener("submit", function(event) {
+        event.preventDefault();
+        
+        let formData = {
+            message: messageBox.value,
+            recipient_types: Array.from(document.querySelectorAll("input[name='recipient_types']:checked"))
+                .map(cb => cb.value)
+        };
+
+        fetch("{{ url_for('routes.send_message') }}", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "X-CSRFToken": document.querySelector("meta[name='csrf-token']").getAttribute("content")
+            },
+            body: JSON.stringify(formData)
+        })
+        .then(response => response.json())
+        .then(data => {
+            let responseDiv = document.getElementById("response");
+            responseDiv.classList.remove("hidden");
+            responseDiv.classList.add(data.success ? "bg-green-100 text-green-700 border-green-400" : "bg-red-100 text-red-700 border-red-400");
+            responseDiv.textContent = data.message;
+        })
+        .catch(error => console.error("Error:", error));
+    });
 });
 </script>
 {% endblock %}

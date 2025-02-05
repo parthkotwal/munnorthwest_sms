@@ -27,6 +27,10 @@ def create_app():
     def load_user(user_id):
         from models import Admin  # Avoid circular imports
         return db.session.get(Admin, int(user_id))
+    
+    @app.route('/')
+    def index():
+        return redirect(url_for('routes.login'))
 
     migrate = Migrate(app, db)
 
