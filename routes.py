@@ -14,11 +14,12 @@ import re
 
 routes = Blueprint('routes', __name__)
 
+# env variables
 load_dotenv(".env")
 twilio_client = Client(os.environ.get('TWILIO_ACCOUNT_SID'), os.environ.get('TWILIO_AUTH_TOKEN'))
 twilio_number:str = os.environ.get('TWILIO_PHONE_NUMBER')
 
-# Initialize the database with default conferences
+# Initialize database w/ default conferences
 @routes.before_app_request
 def initialize_conferences():
     Conference.init_default_conferences()
@@ -105,10 +106,18 @@ def dashboard():
         sent_by=current_user.id
     ).order_by(Message.sent_at.desc()).limit(5).all()
     
-    return render_template('dashboard.html',
-                         conference=conference,
-                         participant_counts=participant_counts,
-                         recent_messages=recent_messages)
+    scheduled_messages = Message.query.filter(
+        Message.sent_by == current_user.id,
+        Message.status == 'scheduled'
+    ).order_by(Message.scheduled_at.asc()).all()
+
+    return render_template(
+        'dashboard.html',
+        conference=conference,
+        participant_counts=participant_counts,
+        recent_messages=recent_messages,
+        scheduled_messages=scheduled_messages
+    )
 
 @routes.route('/upload_participants', methods=['GET', 'POST'])
 @login_required
@@ -367,7 +376,6 @@ def send_message():
         return jsonify({'success': False, 'message': 'No conference selected'}), 400
 
     if request.method == 'GET':
-        # Fetch all secretariat members for the conference
         secretariat_members = Participant.query.filter_by(
             conference_id=current_user.conference_id,
             participant_type="Secretariat"
@@ -382,6 +390,7 @@ def send_message():
     data = request.get_json()
     message_content = data.get('message', '').strip()
     recipient_types = data.get('recipient_types', [])
+    scheduled_at = data.get('scheduled_at')
 
     if not message_content or not recipient_types:
         return jsonify({'success': False, 'message': 'Message content and at least one recipient type are required'}), 400
@@ -412,22 +421,32 @@ def send_message():
     if not recipients:
         return jsonify({'success': False, 'message': 'No recipients found for the selected categories'}), 400
 
-    sent_count = 0
-    failed_count = 0
-    errors = []
-
     message_entry = Message(
         content=message_content,
         sent_by=current_user.id,
         recipient_count=len(recipients),
-        status='sent'
+        status='scheduled' if scheduled_at else 'pending',
+        scheduled_at=datetime.strptime(scheduled_at, "%Y-%m-%d %H:%M") if scheduled_at else None
     )
     db.session.add(message_entry)
     db.session.commit()
 
+    if not scheduled_at:
+        send_messages_now(message_entry, recipients)
+
+    return jsonify({
+        'success': True,
+        'message': 'Message scheduled successfully' if scheduled_at else 'Message sent successfully'
+    })
+
+def send_messages_now(message_entry:Message, recipients):
+    sent_count = 0
+    failed_count = 0
+    errors = []
+
     for recipient in recipients:
         try:
-            personalized_message = message_content.format(
+            personalized_message = message_entry.content.format(
                 first_name=recipient.first_name,
                 last_name=recipient.last_name,
                 phone=recipient.phone,
@@ -453,14 +472,8 @@ def send_message():
             failed_count += 1
             errors.append(f"Error processing {recipient.first_name} {recipient.last_name}: {str(e)}")
 
+    message_entry.status = "sent"
     db.session.commit()
-
-    return jsonify({
-        'success': True,
-        'message': f'Messages sent: {sent_count}, Failed: {failed_count}',
-        'errors': errors
-    })
-
 
 def send_sms_twilio(to:str, message:str):
     """Send SMS using Twilio API."""

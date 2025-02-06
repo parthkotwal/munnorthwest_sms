@@ -91,9 +91,10 @@ class Message(db.Model):
     content = db.Column(db.Text, nullable=False)
     sent_by = db.Column(db.Integer, db.ForeignKey('admin.id'))
     sent_at = db.Column(db.DateTime, default=datetime.now)
-    status = db.Column(db.String(20), default='pending')  # pending, sent, failed
+    scheduled_at = db.Column(db.DateTime, nullable=True)  # NEW FIELD
+    status = db.Column(db.String(20), default='pending')  # pending, sent, failed, scheduled
     recipient_count = db.Column(db.Integer)
-    
+
     # Relationships
     recipients = db.relationship('MessageRecipient', backref='message', lazy=True)
 

@@ -39,6 +39,16 @@
             Use placeholders: <code>{{ '{first_name}' }}</code>, <code>{{ '{last_name}' }}</code>, <code>{{ '{phone}' }}</code>, <code>{{ '{participant_type}' }}</code>
         </p>
 
+        <!-- Collapsible Scheduled Message Section -->
+        <div class="mt-4">
+            <button type="button" id="toggle-schedule" class="text-blue-600 font-semibold">➕ Schedule Message (Optional)</button>
+            <div id="schedule-section" class="mt-2 p-4 bg-gray-100 rounded-lg hidden">
+                <label class="block text-sm font-medium text-gray-700">Select Date & Time</label>
+                <input type="datetime-local" id="scheduled-at" name="scheduled_at" class="w-full border rounded p-2">
+                <p class="text-sm text-gray-500">Leave empty to send immediately.</p>
+            </div>
+        </div>
+
         <button type="submit" class="px-4 py-2 text-white conference-primary rounded shadow">Send Message</button>
     </form>
     
@@ -56,6 +66,9 @@ document.addEventListener("DOMContentLoaded", function () {
     const secretariatCheckbox = document.querySelector("input[value='Secretariat']");
     const secretariatMembersDiv = document.getElementById("secretariat-members");
     const secretariatMembersCheckboxes = document.querySelectorAll(".secretariat-member");
+    const scheduledAtInput = document.getElementById("scheduled-at");
+    const scheduleSection = document.getElementById("schedule-section");
+    const toggleScheduleButton = document.getElementById("toggle-schedule");
 
     // Character count update
     messageBox.addEventListener("input", function () {
@@ -83,7 +96,17 @@ document.addEventListener("DOMContentLoaded", function () {
         });
         secretariatMembersCheckboxes.forEach(cb => cb.checked = isChecked);
     });
-    
+
+    // Toggle Schedule Section
+    toggleScheduleButton.addEventListener("click", function () {
+        scheduleSection.classList.toggle("hidden");
+        if (scheduleSection.classList.contains("hidden")) {
+            toggleScheduleButton.textContent = "➕ Schedule Message (Optional)";
+        } else {
+            toggleScheduleButton.textContent = "➖ Cancel Scheduling";
+        }
+    });
+
     // Handle form submission
     document.getElementById("send-message-form").addEventListener("submit", function(event) {
         event.preventDefault();
@@ -91,7 +114,8 @@ document.addEventListener("DOMContentLoaded", function () {
         let formData = {
             message: messageBox.value,
             recipient_types: Array.from(document.querySelectorAll("input[name='recipient_types']:checked"))
-                .map(cb => cb.value)
+                .map(cb => cb.value),
+            scheduled_at: scheduledAtInput.value || null  // Include scheduled time
         };
 
         fetch("{{ url_for('routes.send_message') }}", {
