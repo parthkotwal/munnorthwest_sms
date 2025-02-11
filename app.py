@@ -6,6 +6,8 @@ from extensions import db
 from flask_wtf.csrf import CSRFProtect
 from dotenv import load_dotenv
 import os
+from apscheduler.schedulers.background import BackgroundScheduler
+from scheduler import process_scheduled_messages
 
 csrf = CSRFProtect()
 load_dotenv(".env")
@@ -40,6 +42,10 @@ def create_app():
 
     from routes import routes
     app.register_blueprint(routes, url_prefix='/')
+
+    scheduler = BackgroundScheduler()
+    scheduler.add_job(process_scheduled_messages, 'interval', minutes=1)
+    scheduler.start()
 
     return app
 

@@ -84,7 +84,7 @@ class Participant(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.now)
     
     # Relationships
-    received_messages = db.relationship('MessageRecipient', backref='participant', lazy=True)
+    received_messages = db.relationship('MessageRecipient', backref='participant', lazy=True, cascade="all, delete-orphan")
 
 class Message(db.Model):
     id = db.Column(db.Integer, primary_key=True)

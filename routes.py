@@ -397,10 +397,10 @@ def send_message():
 
     valid_types = {'Delegate', 'Advisor', 'Staff', 'Secretariat'}
     selected_types = set(recipient_types).intersection(valid_types)
-
-    # Collect individual secretariat selections separately
-    secretariat_selected = "Secretariat" in recipient_types
     individual_secretariat_names = [r for r in recipient_types if r not in valid_types]
+    
+    if individual_secretariat_names:
+        selected_types.discard('Secretariat')
 
     # Query standard participant types
     recipients = Participant.query.filter(
@@ -410,11 +410,14 @@ def send_message():
 
     # Query individually selected secretariat members
     if individual_secretariat_names:
+        first_names = [name.split()[0] for name in individual_secretariat_names]
+        last_names = [name.split()[1] for name in individual_secretariat_names if " " in name]
+
         secretariat_recipients = Participant.query.filter(
             Participant.conference_id == current_user.conference_id,
             Participant.participant_type == "Secretariat",
-            Participant.first_name.in_([name.split()[0] for name in individual_secretariat_names]),
-            Participant.last_name.in_([name.split()[1] for name in individual_secretariat_names if " " in name])
+            Participant.first_name.in_(first_names),
+            Participant.last_name.in_(last_names)
         ).all()
         recipients.extend(secretariat_recipients)
 

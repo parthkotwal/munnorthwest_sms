@@ -130,8 +130,19 @@ document.addEventListener("DOMContentLoaded", function () {
         .then(data => {
             let responseDiv = document.getElementById("response");
             responseDiv.classList.remove("hidden");
-            responseDiv.classList.add(data.success ? "bg-green-100 text-green-700 border-green-400" : "bg-red-100 text-red-700 border-red-400");
-            responseDiv.textContent = data.message;
+            if (data.success) {
+                responseDiv.classList.add("bg-green-100", "text-green-700", "border-green-400");
+                responseDiv.classList.remove("bg-red-100", "text-red-700", "border-red-400");
+                responseDiv.innerHTML = `<strong>Success:</strong> ${data.message}`;
+                document.getElementById("send-message-form").reset(); // Reset form inputs
+                document.getElementById("char-count").textContent = "Characters: 0"; // Reset character counter
+            } else {
+                responseDiv.classList.add("bg-red-100", "text-red-700", "border-red-400");
+                responseDiv.classList.remove("bg-green-100", "text-green-700", "border-green-400");
+                responseDiv.innerHTML = `<strong>Error:</strong> ${data.message}`;
+            }
+
+            responseDiv.scrollIntoView({ behavior: "smooth", block: "center" }); // Scroll to message
         })
         .catch(error => console.error("Error:", error));
     });
