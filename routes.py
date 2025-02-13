@@ -102,8 +102,9 @@ def dashboard():
         ).count()
     }
     
-    recent_messages = Message.query.filter_by(
-        sent_by=current_user.id
+    recent_messages = Message.query.filter(
+        Message.sent_by == current_user.id,
+        Message.status == 'sent'
     ).order_by(Message.sent_at.desc()).limit(5).all()
     
     scheduled_messages = Message.query.filter(
@@ -424,14 +425,38 @@ def send_message():
     if not recipients:
         return jsonify({'success': False, 'message': 'No recipients found for the selected categories'}), 400
 
+    if scheduled_at:
+        try:
+            # First try ISO format (with T)
+            scheduled_at = datetime.strptime(scheduled_at, "%Y-%m-%dT%H:%M")
+        except ValueError:
+            try:
+                # Fallback to space format
+                scheduled_at = datetime.strptime(scheduled_at, "%Y-%m-%d %H:%M")
+            except ValueError:
+                return jsonify({
+                    'success': False, 
+                    'message': 'Invalid datetime format. Expected YYYY-MM-DD HH:MM'
+                }), 400
+            
     message_entry = Message(
         content=message_content,
         sent_by=current_user.id,
         recipient_count=len(recipients),
         status='scheduled' if scheduled_at else 'pending',
-        scheduled_at=datetime.strptime(scheduled_at, "%Y-%m-%d %H:%M") if scheduled_at else None
+        scheduled_at=scheduled_at
     )
     db.session.add(message_entry)
+    db.session.commit()
+
+    for recipient in recipients:
+        message_recipient = MessageRecipient(
+            message_id=message_entry.id,
+            participant_id=recipient.id,
+            status='pending'
+        )
+        db.session.add(message_recipient)
+
     db.session.commit()
 
     if not scheduled_at:
@@ -443,6 +468,8 @@ def send_message():
     })
 
 def send_messages_now(message_entry:Message, recipients):
+    print(f"Sending Message ID: {message_entry.id} to {len(recipients)} recipients")
+
     sent_count = 0
     failed_count = 0
     errors = []
@@ -477,6 +504,7 @@ def send_messages_now(message_entry:Message, recipients):
 
     message_entry.status = "sent"
     db.session.commit()
+    print(f"Message {message_entry.id} Sent: {sent_count}, Failed: {failed_count}, Errors: {errors}")
 
 def send_sms_twilio(to:str, message:str):
     """Send SMS using Twilio API."""
@@ -490,3 +518,30 @@ def send_sms_twilio(to:str, message:str):
     except Exception as e:
         return {'status': 'failed', 'error': str(e)}
     
+@routes.route('/cancel_scheduled_message/<int:message_id>', methods=['POST'])
+@login_required
+def cancel_scheduled_message(message_id):
+    """Cancel a scheduled message"""
+    message = Message.query.get_or_404(message_id)
+    
+    if message.sent_by != current_user.id:
+        flash('You do not have permission to cancel this message', 'danger')
+        return redirect(url_for('routes.dashboard'))
+    
+    # Check if message is actually scheduled
+    if message.status != 'scheduled':
+        flash('This message cannot be cancelled', 'danger')
+        return redirect(url_for('routes.dashboard'))
+    
+    try:
+        # Delete any message recipients
+        MessageRecipient.query.filter_by(message_id=message.id).delete()
+        db.session.delete(message)
+        db.session.commit()
+        flash('Scheduled message has been cancelled', 'success')
+
+    except Exception as e:
+        db.session.rollback()
+        flash('Error cancelling message', 'danger')
+    
+    return redirect(url_for('routes.dashboard'))

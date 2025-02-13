@@ -58,94 +58,94 @@
 
 {% block scripts %}
 <script>
-document.addEventListener("DOMContentLoaded", function () {
-    const messageBox = document.getElementById("message-content");
-    const charCount = document.getElementById("char-count");
-    const selectAllCheckbox = document.getElementById("select-all");
-    const recipientCheckboxes = document.querySelectorAll(".recipient-checkbox");
-    const secretariatCheckbox = document.querySelector("input[value='Secretariat']");
-    const secretariatMembersDiv = document.getElementById("secretariat-members");
-    const secretariatMembersCheckboxes = document.querySelectorAll(".secretariat-member");
-    const scheduledAtInput = document.getElementById("scheduled-at");
-    const scheduleSection = document.getElementById("schedule-section");
-    const toggleScheduleButton = document.getElementById("toggle-schedule");
+    document.addEventListener("DOMContentLoaded", function () {
+        const messageBox = document.getElementById("message-content");
+        const charCount = document.getElementById("char-count");
+        const selectAllCheckbox = document.getElementById("select-all");
+        const recipientCheckboxes = document.querySelectorAll(".recipient-checkbox");
+        const secretariatCheckbox = document.querySelector("input[value='Secretariat']");
+        const secretariatMembersDiv = document.getElementById("secretariat-members");
+        const secretariatMembersCheckboxes = document.querySelectorAll(".secretariat-member");
+        const scheduledAtInput = document.getElementById("scheduled-at");
+        const scheduleSection = document.getElementById("schedule-section");
+        const toggleScheduleButton = document.getElementById("toggle-schedule");
 
-    // Character count update
-    messageBox.addEventListener("input", function () {
-        charCount.textContent = `Characters: ${messageBox.value.length}`;
-    });
+        // Character count update
+        messageBox.addEventListener("input", function () {
+            charCount.textContent = `Characters: ${messageBox.value.length}`;
+        });
 
-    // Toggle Secretariat Members
-    secretariatCheckbox.addEventListener("change", function () {
-        if (this.checked) {
-            secretariatMembersDiv.classList.remove("hidden");
-        } else {
-            secretariatMembersDiv.classList.add("hidden");
-            secretariatMembersCheckboxes.forEach(cb => cb.checked = false);
-        }
-    });
-
-    // Select All functionality
-    selectAllCheckbox.addEventListener("change", function () {
-        const isChecked = this.checked;
-        recipientCheckboxes.forEach(cb => {
-            cb.checked = isChecked;
-            if (cb.value === "Secretariat") {
-                cb.dispatchEvent(new Event("change"));
+        // Toggle Secretariat Members
+        secretariatCheckbox.addEventListener("change", function () {
+            if (this.checked) {
+                secretariatMembersDiv.classList.remove("hidden");
+            } else {
+                secretariatMembersDiv.classList.add("hidden");
+                secretariatMembersCheckboxes.forEach(cb => cb.checked = false);
             }
         });
-        secretariatMembersCheckboxes.forEach(cb => cb.checked = isChecked);
-    });
 
-    // Toggle Schedule Section
-    toggleScheduleButton.addEventListener("click", function () {
-        scheduleSection.classList.toggle("hidden");
-        if (scheduleSection.classList.contains("hidden")) {
-            toggleScheduleButton.textContent = "➕ Schedule Message (Optional)";
-        } else {
-            toggleScheduleButton.textContent = "➖ Cancel Scheduling";
-        }
-    });
+        // Select All functionality
+        selectAllCheckbox.addEventListener("change", function () {
+            const isChecked = this.checked;
+            recipientCheckboxes.forEach(cb => {
+                cb.checked = isChecked;
+                if (cb.value === "Secretariat") {
+                    cb.dispatchEvent(new Event("change"));
+                }
+            });
+            secretariatMembersCheckboxes.forEach(cb => cb.checked = isChecked);
+        });
 
-    // Handle form submission
-    document.getElementById("send-message-form").addEventListener("submit", function(event) {
-        event.preventDefault();
-        
-        let formData = {
-            message: messageBox.value,
-            recipient_types: Array.from(document.querySelectorAll("input[name='recipient_types']:checked"))
-                .map(cb => cb.value),
-            scheduled_at: scheduledAtInput.value || null  // Include scheduled time
-        };
-
-        fetch("{{ url_for('routes.send_message') }}", {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-                "X-CSRFToken": document.querySelector("meta[name='csrf-token']").getAttribute("content")
-            },
-            body: JSON.stringify(formData)
-        })
-        .then(response => response.json())
-        .then(data => {
-            let responseDiv = document.getElementById("response");
-            responseDiv.classList.remove("hidden");
-            if (data.success) {
-                responseDiv.classList.add("bg-green-100", "text-green-700", "border-green-400");
-                responseDiv.classList.remove("bg-red-100", "text-red-700", "border-red-400");
-                responseDiv.innerHTML = `<strong>Success:</strong> ${data.message}`;
-                document.getElementById("send-message-form").reset(); // Reset form inputs
-                document.getElementById("char-count").textContent = "Characters: 0"; // Reset character counter
+        // Toggle Schedule Section
+        toggleScheduleButton.addEventListener("click", function () {
+            scheduleSection.classList.toggle("hidden");
+            if (scheduleSection.classList.contains("hidden")) {
+                toggleScheduleButton.textContent = "➕ Schedule Message (Optional)";
             } else {
-                responseDiv.classList.add("bg-red-100", "text-red-700", "border-red-400");
-                responseDiv.classList.remove("bg-green-100", "text-green-700", "border-green-400");
-                responseDiv.innerHTML = `<strong>Error:</strong> ${data.message}`;
+                toggleScheduleButton.textContent = "➖ Cancel Scheduling";
             }
+        });
 
-            responseDiv.scrollIntoView({ behavior: "smooth", block: "center" }); // Scroll to message
-        })
-        .catch(error => console.error("Error:", error));
+        // Handle form submission
+        document.getElementById("send-message-form").addEventListener("submit", function(event) {
+            event.preventDefault();
+            
+            let formData = {
+                message: messageBox.value,
+                recipient_types: Array.from(document.querySelectorAll("input[name='recipient_types']:checked"))
+                    .map(cb => cb.value),
+                scheduled_at: scheduledAtInput.value || null  // Include scheduled time
+            };
+
+            fetch("{{ url_for('routes.send_message') }}", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "X-CSRFToken": document.querySelector("meta[name='csrf-token']").getAttribute("content")
+                },
+                body: JSON.stringify(formData)
+            })
+            .then(response => response.json())
+            .then(data => {
+                let responseDiv = document.getElementById("response");
+                responseDiv.classList.remove("hidden");
+                if (data.success) {
+                    responseDiv.classList.add("bg-green-100", "text-green-700", "border-green-400");
+                    responseDiv.classList.remove("bg-red-100", "text-red-700", "border-red-400");
+                    responseDiv.innerHTML = `<strong>Success:</strong> ${data.message}`;
+                    document.getElementById("send-message-form").reset(); // Reset form inputs
+                    document.getElementById("char-count").textContent = "Characters: 0"; // Reset character counter
+                } else {
+                    responseDiv.classList.add("bg-red-100", "text-red-700", "border-red-400");
+                    responseDiv.classList.remove("bg-green-100", "text-green-700", "border-green-400");
+                    responseDiv.innerHTML = `<strong>Error:</strong> ${data.message}`;
+                }
+
+                responseDiv.scrollIntoView({ behavior: "smooth", block: "center" }); // Scroll to message
+            })
+            .catch(error => console.error("Error:", error));
+        });
     });
-});
 </script>
 {% endblock %}
