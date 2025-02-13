@@ -1,4 +1,4 @@
-from flask import Blueprint, render_template, redirect, url_for, request, flash, jsonify, Response
+from flask import Blueprint, render_template, redirect, url_for, request, flash, jsonify, Response, current_app
 from flask_login import LoginManager, login_user, login_required, logout_user, current_user
 from werkzeug.security import check_password_hash
 from models import Admin, Conference, Participant, Message, MessageRecipient
@@ -8,6 +8,7 @@ from io import TextIOWrapper
 from datetime import datetime
 from twilio.rest import Client
 from dotenv import load_dotenv
+from concurrent.futures import ThreadPoolExecutor
 import os
 import csv
 import re
@@ -404,10 +405,12 @@ def send_message():
         selected_types.discard('Secretariat')
 
     # Query standard participant types
-    recipients = Participant.query.filter(
-        Participant.conference_id == current_user.conference_id,
-        Participant.participant_type.in_(list(selected_types))
-    ).all()
+    recipients = db.session.execute(
+        db.select(Participant).where(
+            Participant.conference_id == current_user.conference_id,
+            Participant.participant_type.in_(selected_types)
+        )
+    ).scalars().all()
 
     # Query individually selected secretariat members
     if individual_secretariat_names:
@@ -449,14 +452,16 @@ def send_message():
     db.session.add(message_entry)
     db.session.commit()
 
-    for recipient in recipients:
-        message_recipient = MessageRecipient(
+    message_recipients = [
+        MessageRecipient(
             message_id=message_entry.id,
             participant_id=recipient.id,
             status='pending'
         )
-        db.session.add(message_recipient)
+        for recipient in recipients
+    ]
 
+    db.session.bulk_save_objects(message_recipients)
     db.session.commit()
 
     if not scheduled_at:
@@ -467,44 +472,123 @@ def send_message():
         'message': 'Message scheduled successfully' if scheduled_at else 'Message sent successfully'
     })
 
-def send_messages_now(message_entry:Message, recipients):
-    print(f"Sending Message ID: {message_entry.id} to {len(recipients)} recipients")
+# def send_messages_now_backup(message_entry:Message, recipients):
+#     print(f"Sending Message ID: {message_entry.id} to {len(recipients)} recipients")
 
+#     sent_count = 0
+#     failed_count = 0
+#     errors = []
+
+#     for recipient in recipients:
+#         try:
+#             personalized_message = message_entry.content.format(
+#                 first_name=recipient.first_name,
+#                 last_name=recipient.last_name,
+#                 phone=recipient.phone,
+#                 participant_type=recipient.participant_type
+#             )
+
+#             response = send_sms_twilio(recipient.phone, personalized_message)
+
+#             if response['status'] == 'sent':
+#                 message_recipient = MessageRecipient(
+#                     message_id=message_entry.id,
+#                     participant_id=recipient.id,
+#                     status='sent',
+#                     sent_at=datetime.now()
+#                 )
+#                 db.session.add(message_recipient)
+#                 sent_count += 1
+#             else:
+#                 failed_count += 1
+#                 errors.append(f"Failed to send message to {recipient.first_name} {recipient.last_name}: {response['error']}")
+
+#         except Exception as e:
+#             failed_count += 1
+#             errors.append(f"Error processing {recipient.first_name} {recipient.last_name}: {str(e)}")
+
+#     message_entry.status = "sent"
+#     db.session.commit()
+#     print(f"Message {message_entry.id} Sent: {sent_count}, Failed: {failed_count}, Errors: {errors}")
+ 
+def send_messages_now(message_entry: Message, recipients):
+    print(f"Sending Message ID: {message_entry.id} to {len(recipients)} recipients")
+    
+    # Store the current application context
+    ctx = current_app._get_current_object()
+
+    def send_to_recipient(recipient):
+        # Push a new application context for this thread
+        with ctx.app_context():
+            try:
+                personalized_message = message_entry.content.format(
+                    first_name=recipient.first_name,
+                    last_name=recipient.last_name,
+                    phone=recipient.phone,
+                    participant_type=recipient.participant_type
+                )
+                
+                response = send_sms_twilio(recipient.phone, personalized_message)
+                
+                if response['status'] == 'sent':
+                    # Create recipient entry
+                    message_recipient = MessageRecipient(
+                        message_id=message_entry.id,
+                        participant_id=recipient.id,
+                        status='sent',
+                        sent_at=datetime.now()
+                    )
+                    # Return the recipient entry to be added in the main thread
+                    return {
+                        "success": True,
+                        "recipient": message_recipient,
+                        "error": None
+                    }
+                else:
+                    return {
+                        "success": False,
+                        "recipient": None,
+                        "error": response.get('error', 'Unknown error')
+                    }
+            
+            except Exception as e:
+                return {
+                    "success": False,
+                    "recipient": None,
+                    "error": str(e)
+                }
+
+    # Execute in thread pool
+    with ThreadPoolExecutor(max_workers=10) as executor:
+        futures = [executor.submit(send_to_recipient, recipient) for recipient in recipients]
+        results = [future.result() for future in futures]
+
+    # Process results in main thread where we already have app context
     sent_count = 0
     failed_count = 0
-    errors = []
-
-    for recipient in recipients:
-        try:
-            personalized_message = message_entry.content.format(
-                first_name=recipient.first_name,
-                last_name=recipient.last_name,
-                phone=recipient.phone,
-                participant_type=recipient.participant_type
-            )
-
-            response = send_sms_twilio(recipient.phone, personalized_message)
-
-            if response['status'] == 'sent':
-                message_recipient = MessageRecipient(
-                    message_id=message_entry.id,
-                    participant_id=recipient.id,
-                    status='sent',
-                    sent_at=datetime.now()
-                )
-                db.session.add(message_recipient)
-                sent_count += 1
-            else:
-                failed_count += 1
-                errors.append(f"Failed to send message to {recipient.first_name} {recipient.last_name}: {response['error']}")
-
-        except Exception as e:
-            failed_count += 1
-            errors.append(f"Error processing {recipient.first_name} {recipient.last_name}: {str(e)}")
-
+    
+    # Batch add successful message recipients
+    successful_recipients = [
+        result["recipient"] for result in results 
+        if result["success"] and result["recipient"] is not None
+    ]
+    
+    if successful_recipients:
+        db.session.bulk_save_objects(successful_recipients)
+        sent_count = len(successful_recipients)
+    
+    failed_count = len(results) - sent_count
+    
+    # Log failures
+    for result in results:
+        if not result["success"]:
+            print(f"Message sending failed: {result['error']}")
+    
+    # Update message status
     message_entry.status = "sent"
     db.session.commit()
-    print(f"Message {message_entry.id} Sent: {sent_count}, Failed: {failed_count}, Errors: {errors}")
+    
+    print(f"Bulk Message Sent: {sent_count}, Failed: {failed_count}")
 
 def send_sms_twilio(to:str, message:str):
     """Send SMS using Twilio API."""

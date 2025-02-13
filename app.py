@@ -41,10 +41,6 @@ def init_scheduler(app):
                 else:
                     print(f"[SCHEDULER] No recipients found for message {message.id}, skipping.")
 
-                send_messages_now(message, recipients)
-                message.status = "sent"
-                db.session.commit()
-
     scheduler = BackgroundScheduler()
     scheduler.add_job(process_scheduled_messages, 'interval', minutes=1)
     scheduler.start()
