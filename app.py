@@ -10,7 +10,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 import atexit
 from datetime import datetime
 from models import Message, MessageRecipient, Participant
-from routes import send_messages_now
+from routes import send_messages_now, send_messages_now_backup
 
 csrf = CSRFProtect()
 load_dotenv(".env")
@@ -34,7 +34,10 @@ def init_scheduler(app):
 
                 if recipients:
                     print(f"[SCHEDULER] Sending to {len(recipients)} recipients for message {message.id}")
-                    send_messages_now(message, recipients)
+                    if not send_messages_now(message, recipients):
+                        print("Falling back to backup sending method...")
+                        send_messages_now_backup(message, recipients)
+                        
                     message.status = "sent"
                     message.sent_at = datetime.now()
                     db.session.commit()

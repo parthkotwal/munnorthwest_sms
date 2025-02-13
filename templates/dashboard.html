@@ -140,3 +140,62 @@
     </div>
 </div>
 {% endblock %}
+
+{% block scripts %}
+<script>
+    function checkScheduledMessages() {
+        fetch("/api/check-scheduled-messages")  // Your API endpoint to check scheduled messages status
+            .then(response => response.json())
+            .then(data => {
+                data.messages.forEach(message => {
+                    if (message.status === "sent") {
+                        // Check if the message is already in the "Recent Messages" section
+                        const existingSentRow = document.getElementById('recent-message-' + message.id);
+                        
+                        if (!existingSentRow) {
+                            const scheduledRow = document.getElementById('message-' + message.id);
+                            const recentMessagesTable = document.getElementById('recent-messages-table'); // Ensure this ID is correct
+
+                            // Remove the message row from the scheduled section
+                            scheduledRow.remove();
+
+                            // Create a new row for the recent messages table
+                            const newRow = document.createElement('tr');
+                            newRow.id = 'recent-message-' + message.id;
+                            newRow.innerHTML = `
+                                <td class="px-6 py-4 text-sm text-gray-500">${message.sent_at}</td>
+                                <td class="px-6 py-4 text-sm text-gray-500">${message.content}</td>
+                                <td class="px-6 py-4 text-sm text-gray-500">${message.recipient_count}</td>
+                            `;
+                            recentMessagesTable.appendChild(newRow);
+
+                            // Flash success message notification (Using a simple alert for now)
+                            flashMessage("Message sent successfully!", "success");
+                        } else {
+                            window.location.reload();
+                        }
+                    }
+                });
+            })
+            .catch(error => console.error('Error checking scheduled messages:', error));
+    }
+
+    function flashMessage(message, type) {
+        // Create a flash message element
+        const flashAlert = document.createElement('div');
+        flashAlert.classList.add('alert', 'alert-' + type);
+        flashAlert.innerHTML = message;
+
+        // Append to body or a specific container
+        document.body.appendChild(flashAlert);
+
+        // Remove flash message after a few seconds
+        setTimeout(() => {
+            flashAlert.remove();
+        }, 5000);  // Show for 5 seconds
+    }
+
+    // Call this function every 10 seconds
+    setInterval(checkScheduledMessages, 20000);
+</script>
+{% endblock %}

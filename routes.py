@@ -465,51 +465,14 @@ def send_message():
     db.session.commit()
 
     if not scheduled_at:
-        send_messages_now(message_entry, recipients)
+        if not send_messages_now(message_entry, recipients):
+            print("Falling back to backup sending method...")
+            send_messages_now_backup(message_entry, recipients)
 
     return jsonify({
         'success': True,
         'message': 'Message scheduled successfully' if scheduled_at else 'Message sent successfully'
     })
-
-# def send_messages_now_backup(message_entry:Message, recipients):
-#     print(f"Sending Message ID: {message_entry.id} to {len(recipients)} recipients")
-
-#     sent_count = 0
-#     failed_count = 0
-#     errors = []
-
-#     for recipient in recipients:
-#         try:
-#             personalized_message = message_entry.content.format(
-#                 first_name=recipient.first_name,
-#                 last_name=recipient.last_name,
-#                 phone=recipient.phone,
-#                 participant_type=recipient.participant_type
-#             )
-
-#             response = send_sms_twilio(recipient.phone, personalized_message)
-
-#             if response['status'] == 'sent':
-#                 message_recipient = MessageRecipient(
-#                     message_id=message_entry.id,
-#                     participant_id=recipient.id,
-#                     status='sent',
-#                     sent_at=datetime.now()
-#                 )
-#                 db.session.add(message_recipient)
-#                 sent_count += 1
-#             else:
-#                 failed_count += 1
-#                 errors.append(f"Failed to send message to {recipient.first_name} {recipient.last_name}: {response['error']}")
-
-#         except Exception as e:
-#             failed_count += 1
-#             errors.append(f"Error processing {recipient.first_name} {recipient.last_name}: {str(e)}")
-
-#     message_entry.status = "sent"
-#     db.session.commit()
-#     print(f"Message {message_entry.id} Sent: {sent_count}, Failed: {failed_count}, Errors: {errors}")
  
 def send_messages_now(message_entry: Message, recipients):
     print(f"Sending Message ID: {message_entry.id} to {len(recipients)} recipients")
@@ -557,38 +520,85 @@ def send_messages_now(message_entry: Message, recipients):
                     "recipient": None,
                     "error": str(e)
                 }
+    try:
+        # Execute in thread pool
+        with ThreadPoolExecutor(max_workers=10) as executor:
+            futures = [executor.submit(send_to_recipient, recipient) for recipient in recipients]
+            results = [future.result() for future in futures]
 
-    # Execute in thread pool
-    with ThreadPoolExecutor(max_workers=10) as executor:
-        futures = [executor.submit(send_to_recipient, recipient) for recipient in recipients]
-        results = [future.result() for future in futures]
+        # Process results in main thread where we already have app context
+        sent_count = 0
+        failed_count = 0
+        
+        # Batch add successful message recipients
+        successful_recipients = [
+            result["recipient"] for result in results 
+            if result["success"] and result["recipient"] is not None
+        ]
+        
+        if successful_recipients:
+            db.session.bulk_save_objects(successful_recipients)
+            sent_count = len(successful_recipients)
+        
+        failed_count = len(results) - sent_count
+        
+        # Log failures
+        for result in results:
+            if not result["success"]:
+                print(f"Message sending failed: {result['error']}")
+        
+        # Update message status
+        message_entry.status = "sent"
+        db.session.commit()
+        print(f"Bulk Message Sent: {sent_count}, Failed: {failed_count}")
 
-    # Process results in main thread where we already have app context
+        # flash("Message sent successfully!", "success")
+        return True
+
+    except Exception as e:
+        print(f"Bulk sending failed with error: {str(e)}. Falling back to backup method.")
+        return False 
+    
+def send_messages_now_backup(message_entry:Message, recipients):
+    print(f"[BACKUP] Sending Message ID: {message_entry.id} to {len(recipients)} recipients")
+
     sent_count = 0
     failed_count = 0
-    
-    # Batch add successful message recipients
-    successful_recipients = [
-        result["recipient"] for result in results 
-        if result["success"] and result["recipient"] is not None
-    ]
-    
-    if successful_recipients:
-        db.session.bulk_save_objects(successful_recipients)
-        sent_count = len(successful_recipients)
-    
-    failed_count = len(results) - sent_count
-    
-    # Log failures
-    for result in results:
-        if not result["success"]:
-            print(f"Message sending failed: {result['error']}")
-    
-    # Update message status
+    errors = []
+
+    for recipient in recipients:
+        try:
+            personalized_message = message_entry.content.format(
+                first_name=recipient.first_name,
+                last_name=recipient.last_name,
+                phone=recipient.phone,
+                participant_type=recipient.participant_type
+            )
+
+            response = send_sms_twilio(recipient.phone, personalized_message)
+
+            if response['status'] == 'sent':
+                message_recipient = MessageRecipient(
+                    message_id=message_entry.id,
+                    participant_id=recipient.id,
+                    status='sent',
+                    sent_at=datetime.now()
+                )
+                db.session.add(message_recipient)
+                sent_count += 1
+            else:
+                failed_count += 1
+                errors.append(f"Failed to send message to {recipient.first_name} {recipient.last_name}: {response['error']}")
+
+        except Exception as e:
+            failed_count += 1
+            errors.append(f"Error processing {recipient.first_name} {recipient.last_name}: {str(e)}")
+
     message_entry.status = "sent"
     db.session.commit()
-    
-    print(f"Bulk Message Sent: {sent_count}, Failed: {failed_count}")
+    print(f"[BACKUP] Message {message_entry.id} Sent: {sent_count}, Failed: {failed_count}, Errors: {errors}")
+
+    # flash("Message sent successfully!", "success")
 
 def send_sms_twilio(to:str, message:str):
     """Send SMS using Twilio API."""
@@ -629,3 +639,19 @@ def cancel_scheduled_message(message_id):
         flash('Error cancelling message', 'danger')
     
     return redirect(url_for('routes.dashboard'))
+
+@routes.route("/check-scheduled-messages", methods=["GET"])
+def check_scheduled_messages():
+    # Fetch all scheduled messages and their status
+    scheduled_messages = Message.query.filter_by(status="scheduled").all()
+    messages_data = []
+    for message in scheduled_messages:
+        messages_data.append({
+            "id": message.id,
+            "status": message.status,
+            "sent_at": message.sent_at.strftime('%Y-%m-%d %H:%M') if message.sent_at else None,
+            "content": message.content,
+            "recipient_count": message.recipient_count
+        })
+    
+    return jsonify({"messages": messages_data})
