@@ -53,8 +53,12 @@ def init_scheduler(app):
     atexit.register(lambda: scheduler.shutdown())
 
 
-def create_app():
+def create_app(config_class=None):
     app = Flask(__name__)
+    
+    if config_class:
+        app.config.from_object(config_class)
+
     app.config['SECRET_KEY'] = os.environ.get("FLASK_SECRET_KEY")
     app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///munnw_sms.db'
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
@@ -63,18 +67,17 @@ def create_app():
     # Initialize db with app here
     db.init_app(app)
     csrf.init_app(app)
-    
+
     # Initialize the login manager
     login_manager = LoginManager()
     login_manager.init_app(app)
-    # Specify login route from blueprint
-    login_manager.login_view = 'routes.login'  
-    
+    login_manager.login_view = 'routes.login'
+
     @login_manager.user_loader
     def load_user(user_id):
         from models import Admin  # NO circular imports
         return db.session.get(Admin, int(user_id))
-    
+
     @app.route('/')
     def index():
         return redirect(url_for('routes.login'))
