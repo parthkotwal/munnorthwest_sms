@@ -61,7 +61,7 @@ def create_app(config_class=None):
 
     app.config['SECRET_KEY'] = os.environ.get("FLASK_SECRET_KEY")
     # app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///munnw_sms.db'
-    app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv("DATABASE_URL", "sqlite:///munnw_sms.db")
+    app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv("DATABASE_URL").replace("postgres://", "postgresql://")
 
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
     app.config['UPLOAD_FOLDER'] = 'uploads'
