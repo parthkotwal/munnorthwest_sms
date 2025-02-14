@@ -74,6 +74,7 @@ def create_app(config_class=None):
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
     app.config['UPLOAD_FOLDER'] = 'uploads'
 
+    app.config['SQLALCHEMY_DATABASE_URI'] = database_url
     print(f"SQLAlchemy URI: {app.config['SQLALCHEMY_DATABASE_URI']}")
 
     # Initialize db with app here
