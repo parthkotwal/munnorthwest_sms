@@ -61,7 +61,10 @@ def create_app(config_class=None):
 
     app.config['SECRET_KEY'] = os.environ.get("FLASK_SECRET_KEY")
     # app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///munnw_sms.db'
-    app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv("DATABASE_URL").replace("postgres://", "postgresql://")
+    # Convert Railway's DATABASE_URL to a format SQLAlchemy accepts
+    database_url = os.getenv("DATABASE_URL")
+    if database_url and database_url.startswith("postgres://"):
+        database_url = database_url.replace("postgres://", "postgresql://", 1)
 
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
     app.config['UPLOAD_FOLDER'] = 'uploads'
