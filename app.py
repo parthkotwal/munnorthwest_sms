@@ -45,13 +45,14 @@ def init_scheduler(app):
                     # print(f"[SCHEDULER] No recipients found for message {message.id}, skipping.")
                     continue
 
-    scheduler = BackgroundScheduler()
-    scheduler.add_job(process_scheduled_messages, 'interval', minutes=1)
-    scheduler.start()
-    print("[SCHEDULER] AP Scheduler initialized")
+    if os.getenv("WERKZEUG_RUN_MAIN") == "true":  # run only in main process
+        scheduler = BackgroundScheduler()
+        scheduler.add_job(process_scheduled_messages, 'interval', minutes=1)
+        scheduler.start()
+        print("[SCHEDULER] AP Scheduler initialized")
 
-    # Shut down scheduler when exiting app
-    atexit.register(lambda: scheduler.shutdown())
+        # Shut down scheduler when exiting app
+        atexit.register(lambda: scheduler.shutdown())
 
 
 def create_app(config_class=None):
