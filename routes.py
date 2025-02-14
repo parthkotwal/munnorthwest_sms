@@ -466,7 +466,7 @@ def send_message():
 
     if not scheduled_at:
         if not send_messages_now(message_entry, recipients):
-            print("Falling back to backup sending method...")
+            # print("Falling back to backup sending method...")
             send_messages_now_backup(message_entry, recipients)
 
     return jsonify({
@@ -475,7 +475,7 @@ def send_message():
     })
  
 def send_messages_now(message_entry: Message, recipients):
-    print(f"Sending Message ID: {message_entry.id} to {len(recipients)} recipients")
+    # print(f"Sending Message ID: {message_entry.id} to {len(recipients)} recipients")
     
     # Store the current application context
     ctx = current_app._get_current_object()
@@ -545,22 +545,23 @@ def send_messages_now(message_entry: Message, recipients):
         # Log failures
         for result in results:
             if not result["success"]:
-                print(f"Message sending failed: {result['error']}")
+                # print(f"Message sending failed: {result['error']}")
+                continue
         
         # Update message status
         message_entry.status = "sent"
         db.session.commit()
-        print(f"Bulk Message Sent: {sent_count}, Failed: {failed_count}")
+        # print(f"Bulk Message Sent: {sent_count}, Failed: {failed_count}")
 
         # flash("Message sent successfully!", "success")
         return True
 
     except Exception as e:
-        print(f"Bulk sending failed with error: {str(e)}. Falling back to backup method.")
+        # print(f"Bulk sending failed with error: {str(e)}. Falling back to backup method.")
         return False 
     
 def send_messages_now_backup(message_entry:Message, recipients):
-    print(f"[BACKUP] Sending Message ID: {message_entry.id} to {len(recipients)} recipients")
+    # print(f"[BACKUP] Sending Message ID: {message_entry.id} to {len(recipients)} recipients")
 
     sent_count = 0
     failed_count = 0
@@ -596,7 +597,7 @@ def send_messages_now_backup(message_entry:Message, recipients):
 
     message_entry.status = "sent"
     db.session.commit()
-    print(f"[BACKUP] Message {message_entry.id} Sent: {sent_count}, Failed: {failed_count}, Errors: {errors}")
+    # print(f"[BACKUP] Message {message_entry.id} Sent: {sent_count}, Failed: {failed_count}, Errors: {errors}")
 
     # flash("Message sent successfully!", "success")
 
