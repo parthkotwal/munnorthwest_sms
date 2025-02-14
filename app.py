@@ -13,7 +13,7 @@ from models import Message, MessageRecipient, Participant
 from routes import send_messages_now, send_messages_now_backup
 
 csrf = CSRFProtect()
-load_dotenv(".env")
+load_dotenv()
 
 def init_scheduler(app):
     """Initialize the scheduler with app context"""
@@ -63,7 +63,11 @@ def create_app(config_class=None):
     # app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///munnw_sms.db'
     # Convert Railway's DATABASE_URL to a format SQLAlchemy accepts
     database_url = os.getenv("DATABASE_URL")
-    if database_url and database_url.startswith("postgres://"):
+    if not database_url:
+        raise RuntimeError("DATABASE_URL is not set. Check Railway environment variables.")
+
+    # Fix PostgreSQL URL format if needed
+    if database_url.startswith("postgres://"):
         database_url = database_url.replace("postgres://", "postgresql://", 1)
 
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
