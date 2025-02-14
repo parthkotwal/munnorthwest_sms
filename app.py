@@ -26,23 +26,24 @@ def init_scheduler(app):
                 Message.scheduled_at <= now
             ).all()
 
-            print(f"[SCHEDULER] Found {len(scheduled_messages)} messages to send.")
+            # print(f"[SCHEDULER] Found {len(scheduled_messages)} messages to send.")
 
             for message in scheduled_messages:
                 recipient_entries = MessageRecipient.query.filter_by(message_id=message.id).all()
                 recipients = [entry.participant for entry in recipient_entries]
 
                 if recipients:
-                    print(f"[SCHEDULER] Sending to {len(recipients)} recipients for message {message.id}")
+                    # print(f"[SCHEDULER] Sending to {len(recipients)} recipients for message {message.id}")
                     if not send_messages_now(message, recipients):
-                        print("Falling back to backup sending method...")
+                        # print("Falling back to backup sending method...")
                         send_messages_now_backup(message, recipients)
                         
                     message.status = "sent"
                     message.sent_at = datetime.now()
                     db.session.commit()
                 else:
-                    print(f"[SCHEDULER] No recipients found for message {message.id}, skipping.")
+                    # print(f"[SCHEDULER] No recipients found for message {message.id}, skipping.")
+                    continue
 
     scheduler = BackgroundScheduler()
     scheduler.add_job(process_scheduled_messages, 'interval', minutes=1)
