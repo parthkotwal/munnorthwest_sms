@@ -11,48 +11,107 @@ import atexit
 from datetime import datetime
 from models import Message, MessageRecipient, Participant
 from routes import send_messages_now, send_messages_now_backup
+import socket
+from contextlib import contextmanager
+from sqlalchemy import create_engine, text
+import time
 
 csrf = CSRFProtect()
 load_dotenv()
 
+def get_lock(session, lock_name):
+    """Try to obtain a PostgreSQL advisory lock"""
+    # Convert lock_name to a 64-bit integer
+    lock_id = hash(lock_name) % 2**63
+    
+    # Try to get the lock
+    result = session.execute(
+        text('SELECT pg_try_advisory_lock(:lock_id)'),
+        {'lock_id': lock_id}
+    ).scalar()
+    
+    return result
+
+def release_lock(session, lock_name):
+    """Release a PostgreSQL advisory lock"""
+    lock_id = hash(lock_name) % 2**63
+    session.execute(
+        text('SELECT pg_advisory_unlock(:lock_id)'),
+        {'lock_id': lock_id}
+    )
+
 def init_scheduler(app):
-    """Initialize the scheduler with app context"""
+    """Initialize the scheduler with worker-level locking"""
     def process_scheduled_messages():
-        """Send messages that are due for delivery."""
-        with app.app_context():  
-            now = datetime.now()
-            scheduled_messages = Message.query.filter(
-                Message.status == 'scheduled',
-                Message.scheduled_at <= now
-            ).all()
+        """Send messages that are due for delivery with lock protection"""
+        with app.app_context():
+            # Get a database session
+            session = db.session()
+            
+            try:
+                # Try to acquire the lock
+                if not get_lock(session, 'scheduler_lock'):
+                    app.logger.info("Another worker is processing messages, skipping this run")
+                    return
 
-            # print(f"[SCHEDULER] Found {len(scheduled_messages)} messages to send.")
+                app.logger.info("Acquired scheduler lock, processing messages")
+                
+                now = datetime.now()
+                scheduled_messages = Message.query.filter(
+                    Message.status == 'scheduled',
+                    Message.scheduled_at <= now
+                ).all()
 
-            for message in scheduled_messages:
-                recipient_entries = MessageRecipient.query.filter_by(message_id=message.id).all()
-                recipients = [entry.participant for entry in recipient_entries]
+                for message in scheduled_messages:
+                    try:
+                        recipient_entries = MessageRecipient.query.filter_by(message_id=message.id).all()
+                        recipients = [entry.participant for entry in recipient_entries]
 
-                if recipients:
-                    # print(f"[SCHEDULER] Sending to {len(recipients)} recipients for message {message.id}")
-                    if not send_messages_now(message, recipients):
-                        # print("Falling back to backup sending method...")
-                        send_messages_now_backup(message, recipients)
+                        if not recipients:
+                            continue
+
+                        if not send_messages_now(message, recipients):
+                            send_messages_now_backup(message, recipients)
+                            
+                        message.status = "sent"
+                        message.sent_at = datetime.now()
+                        db.session.commit()
                         
-                    message.status = "sent"
-                    message.sent_at = datetime.now()
-                    db.session.commit()
-                else:
-                    # print(f"[SCHEDULER] No recipients found for message {message.id}, skipping.")
-                    continue
+                    except Exception as e:
+                        app.logger.error(f"Error processing message {message.id}: {str(e)}")
+                        message.status = "error"
+                        db.session.commit()
+                        continue
 
-    scheduler = BackgroundScheduler()
-    scheduler.add_job(process_scheduled_messages, 'interval', minutes=1)
-    scheduler.start()
-    print("[SCHEDULER] AP Scheduler initialized")
+            except Exception as e:
+                app.logger.error(f"Scheduler error: {str(e)}")
+                
+            finally:
+                # Always release the lock
+                release_lock(session, 'scheduler_lock')
+                session.close()
 
-    # Shut down scheduler when exiting app
-    atexit.register(lambda: scheduler.shutdown())
+    # Only initialize scheduler on the first worker
+    is_first_worker = False
+    try:
+        # Try to bind to the port - only first worker will succeed
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.bind(('localhost', 7999))
+        is_first_worker = True
+        sock.close()
+    except:
+        pass
 
+    if is_first_worker:
+        app.logger.info("Initializing scheduler on primary worker")
+        scheduler = BackgroundScheduler()
+        scheduler.add_job(process_scheduled_messages, 'interval', minutes=1)
+        scheduler.start()
+        
+        # Shut down scheduler when exiting app
+        atexit.register(lambda: scheduler.shutdown())
+    else:
+        app.logger.info("Secondary worker - skipping scheduler initialization")
 
 def create_app(config_class=None):
     app = Flask(__name__)
