@@ -120,6 +120,31 @@ def dashboard():
         recent_messages=recent_messages,
         scheduled_messages=scheduled_messages
     )
+def try_read_csv(file):
+    """Try reading CSV with different encodings and handle BOM"""
+    encodings = ['utf-8', 'utf-8-sig', 'latin-1', 'cp1252']
+    
+    for encoding in encodings:
+        try:
+            # Reset file pointer
+            file.seek(0)
+            csv_file = TextIOWrapper(file, encoding=encoding)
+            reader = csv.DictReader(csv_file)
+            # Validate by reading first row
+            header_fields = set(reader.fieldnames or [])
+            
+            # Clean header fields - remove BOM and whitespace
+            header_fields = {field.strip().lstrip('\ufeff') for field in header_fields}
+            
+            return reader, header_fields
+            
+        except UnicodeDecodeError:
+            continue
+        except Exception as e:
+            current_app.logger.error(f"Error reading CSV with {encoding}: {str(e)}")
+            continue
+            
+    raise ValueError("Unable to read CSV file with any supported encoding")
 
 @routes.route('/upload_participants', methods=['GET', 'POST'])
 @login_required
@@ -151,20 +176,15 @@ def upload_participants():
                     'message': 'Invalid file type. Please upload a CSV file.'
                 }), 400
 
-            # Check file size (10MB limit)
-            if file.content_length and file.content_length > 10 * 1024 * 1024:
-                return jsonify({
-                    'success': False,
-                    'message': 'File too large. Maximum size is 10MB'
-                }), 400
-
             try:
-                csv_file = TextIOWrapper(file, encoding='utf-8')
-                csv_reader = csv.DictReader(csv_file)
+                csv_reader, header_fields = try_read_csv(file)
                 
                 # Validate CSV structure
                 required_fields = {'first_name', 'last_name', 'phone', 'participant_type'}
-                header_fields = set(csv_reader.fieldnames or [])
+                
+                # Log headers for debugging
+                current_app.logger.info(f"CSV Headers found: {header_fields}")
+                current_app.logger.info(f"Required fields: {required_fields}")
                 
                 if not required_fields.issubset(header_fields):
                     missing_fields = required_fields - header_fields
@@ -203,19 +223,6 @@ def upload_participants():
     conference = Conference.query.get(current_user.conference_id)
     return render_template('upload_participants.html', conference=conference)
 
-def handle_response(message, success=True, error_messages=None):
-    response_data = {
-        'success': success,
-        'message': message,
-        'errors': error_messages or []
-    }
-    
-    if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
-        return jsonify(response_data), (200 if success else 400)
-    
-    flash(message, 'success' if success else 'danger')
-    return redirect(url_for('routes.manage_participants') if success else request.url)
-
 def process_participant_upload(csv_reader, conference_id):
     """Process CSV upload and return results summary"""
     success_count = 0
@@ -224,34 +231,37 @@ def process_participant_upload(csv_reader, conference_id):
     
     for row_num, row in enumerate(csv_reader, start=2):  # Start at 2 to account for header row
         try:
-            # Validate required fields
+            # trim whitespace
+            row = {k: v.strip() if v else v for k, v in row.items()}
+
+            # validate required fields
             if not all(row.get(field, '').strip() for field in ['first_name', 'last_name', 'phone']):
                 raise ValueError('Missing required fields')
             
-            # Validate participant type
+            # validate participant type
             participant_type = row.get('participant_type', '').strip()
             valid_types = {'Delegate', 'Advisor', 'Staff', 'Secretariat'}
             if participant_type not in valid_types:
                 raise ValueError(f'Invalid participant type. Must be one of: {", ".join(valid_types)}')
             
-            # Clean and validate phone number
+            # clean and validate phone number
             phone = clean_phone_number(row.get('phone', ''))
             if not phone:
                 raise ValueError('Invalid phone number format')
             
-            # Check for existing participant with same phone number
+            # check for existing participant with same phone number
             existing = Participant.query.filter_by(
                 conference_id=conference_id,
                 phone=phone
             ).first()
             
             if existing:
-                # Update existing participant
+                # update existing participant
                 existing.first_name = row['first_name'].strip()
                 existing.last_name = row['last_name'].strip()
                 existing.participant_type = participant_type
             else:
-                # Create new participant
+                # create new participant
                 participant = Participant(
                     conference_id=conference_id,
                     first_name=row['first_name'].strip(),
@@ -404,7 +414,7 @@ def send_message():
     if individual_secretariat_names:
         selected_types.discard('Secretariat')
 
-    # Query standard participant types
+    # query standard participant types
     recipients = db.session.execute(
         db.select(Participant).where(
             Participant.conference_id == current_user.conference_id,
@@ -412,7 +422,7 @@ def send_message():
         )
     ).scalars().all()
 
-    # Query individually selected secretariat members
+    # query individually selected secretariat members
     if individual_secretariat_names:
         first_names = [name.split()[0] for name in individual_secretariat_names]
         last_names = [name.split()[1] for name in individual_secretariat_names if " " in name]
@@ -430,11 +440,11 @@ def send_message():
 
     if scheduled_at:
         try:
-            # First try ISO format (with T)
+            # first try ISO format (with T)
             scheduled_at = datetime.strptime(scheduled_at, "%Y-%m-%dT%H:%M")
         except ValueError:
             try:
-                # Fallback to space format
+                # fallback to space format
                 scheduled_at = datetime.strptime(scheduled_at, "%Y-%m-%d %H:%M")
             except ValueError:
                 return jsonify({
@@ -477,11 +487,11 @@ def send_message():
 def send_messages_now(message_entry: Message, recipients):
     # print(f"Sending Message ID: {message_entry.id} to {len(recipients)} recipients")
     
-    # Store the current application context
+    # store the current application context
     ctx = current_app._get_current_object()
 
     def send_to_recipient(recipient):
-        # Push a new application context for this thread
+        # push a new application context for this thread
         with ctx.app_context():
             try:
                 personalized_message = message_entry.content.format(
