@@ -120,29 +120,31 @@ def dashboard():
         recent_messages=recent_messages,
         scheduled_messages=scheduled_messages
     )
-
-def get_participant_csv(csv_reader):
-    """Extract unique participant types from CSV file"""
-    # Store current position
-    current_pos = csv_reader.line_num
+def try_read_csv(file):
+    """Try reading CSV with different encodings and handle BOM"""
+    encodings = ['utf-8', 'utf-8-sig', 'latin-1', 'cp1252']
     
-    # Get unique participant types
-    types = set()
-    for row in csv_reader:
-        participant_type = row.get('participant_type', '').strip()
-        if participant_type:
-            types.add(participant_type)
-    
-    # Reset file position
-    if hasattr(csv_reader.reader, 'seekrows'):
-        csv_reader.reader.seekrows(0)
-    else:
-        # If seekrows is not available, we need to recreate the reader
-        csv_reader.reader = csv.reader(csv_reader.reader.file)
-        # Skip header row
-        next(csv_reader.reader)
-    
-    return types
+    for encoding in encodings:
+        try:
+            # Reset file pointer
+            file.seek(0)
+            csv_file = TextIOWrapper(file, encoding=encoding)
+            reader = csv.DictReader(csv_file)
+            # Validate by reading first row
+            header_fields = set(reader.fieldnames or [])
+            
+            # Clean header fields - remove BOM and whitespace
+            header_fields = {field.strip().lstrip('\ufeff') for field in header_fields}
+            
+            return reader, header_fields
+            
+        except UnicodeDecodeError:
+            continue
+        except Exception as e:
+            current_app.logger.error(f"Error reading CSV with {encoding}: {str(e)}")
+            continue
+            
+    raise ValueError("Unable to read CSV file with any supported encoding")
 
 @routes.route('/upload_participants', methods=['GET', 'POST'])
 @login_required
@@ -175,32 +177,8 @@ def upload_participants():
                 }), 400
 
             try:
-                csv_file = None
-                csv_reader = None
-                header_fields = set()
+                csv_reader, header_fields = try_read_csv(file)
                 
-                encodings = ['utf-8', 'utf-8-sig', 'latin-1', 'cp1252']
-    
-                for encoding in encodings:
-                    try:
-                        # Reset file pointer
-                        file.seek(0)
-                        csv_file = TextIOWrapper(file, encoding=encoding)
-                        csv_reader = csv.DictReader(csv_file)
-                        # Validate by reading first row
-                        header_fields = set(csv_reader.fieldnames or [])
-                        
-                        # Clean header fields - remove BOM and whitespace
-                        header_fields = {field.strip().lstrip('\ufeff') for field in header_fields}
-                        
-                        break
-                        
-                    except UnicodeDecodeError:
-                        continue
-                    except Exception as e:
-                        current_app.logger.error(f"Error reading CSV with {encoding}: {str(e)}")
-                        continue
-
                 # Validate CSV structure
                 required_fields = {'first_name', 'last_name', 'phone', 'participant_type'}
                 
@@ -215,29 +193,12 @@ def upload_participants():
                         'message': f'Missing required columns: {", ".join(missing_fields)}'
                     }), 400
 
-                # Get unique participant types from CSV
-                participant_types = set()
-                # Store current position
-                current_pos = csv_file.tell()
-
-                for row in csv_reader:
-                    participant_type = row.get('participant_type', '').strip()
-                    if participant_type:
-                        participant_types.add(participant_type)
-                
-                # Reset file position
-                csv_file.seek(current_pos)
-                csv_reader = csv.DictReader(csv_file)
-
                 # Clear existing participants if checkbox is checked
                 if request.form.get('clear_existing') == 'yes':
-                    Participant.query.filter(
-                        Participant.conference_id == current_user.conference_id,
-                        Participant.participant_type.in_(participant_types)
-                    ).delete(synchronize_session='fetch')
-                    db.session.commit()
+                    Participant.query.filter_by(conference_id=current_user.conference_id).delete()
 
                 results = process_participant_upload(csv_reader, current_user.conference_id)
+                db.session.commit()
 
                 return jsonify({
                     'success': True,
@@ -268,69 +229,56 @@ def process_participant_upload(csv_reader, conference_id):
     error_count = 0
     error_messages = []
     
-    try:
-        for row_num, row in enumerate(csv_reader, start=2):  # Start at 2 to account for header row
-            try:
-                # trim whitespace
-                row = {k: v.strip() if v else v for k, v in row.items()}
+    for row_num, row in enumerate(csv_reader, start=2):  # Start at 2 to account for header row
+        try:
+            # trim whitespace
+            row = {k: v.strip() if v else v for k, v in row.items()}
 
-                # validate required fields
-                if not all(row.get(field, '').strip() for field in ['first_name', 'last_name', 'phone']):
-                    raise ValueError('Missing required fields')
-                
-                # validate participant type
-                participant_type = row.get('participant_type', '').strip()
-                valid_types = {'Delegate', 'Advisor', 'Staff', 'Secretariat'}
-                if participant_type not in valid_types:
-                    raise ValueError(f'Invalid participant type. Must be one of: {", ".join(valid_types)}')
-                
-                # clean and validate phone number
-                phone = clean_phone_number(row.get('phone', ''))
-                if not phone:
-                    raise ValueError('Invalid phone number format')
-                
-                # check for existing participant with same phone number
-                existing = Participant.query.filter_by(
-                    conference_id=conference_id,
-                    phone=phone
-                ).first()
-                
-                if existing:
-                    # update existing participant
-                    existing.first_name = row['first_name'].strip()
-                    existing.last_name = row['last_name'].strip()
-                    existing.participant_type = participant_type
-                else:
-                    # create new participant
-                    participant = Participant(
-                        conference_id=conference_id,
-                        first_name=row['first_name'].strip(),
-                        last_name=row['last_name'].strip(),
-                        phone=phone,
-                        participant_type=participant_type
-                    )
-                    db.session.add(participant)
-                
-                success_count += 1
-
-                if success_count % 100 == 0:
-                    db.session.commit()
-                
-            except Exception as e:
-                error_count += 1
-                error_messages.append(
-                    f"Row {row_num}: Error processing {row.get('first_name', '')} {row.get('last_name', '')}: {str(e)}"
-                )
+            # validate required fields
+            if not all(row.get(field, '').strip() for field in ['first_name', 'last_name', 'phone']):
+                raise ValueError('Missing required fields')
             
-
-        db.session.commit()
-
-
-    except Exception as e:
-        db.session.rollback()
-        error_messages.append(f"Database error: {str(e)}")
-        raise
-
+            # validate participant type
+            participant_type = row.get('participant_type', '').strip()
+            valid_types = {'Delegate', 'Advisor', 'Staff', 'Secretariat'}
+            if participant_type not in valid_types:
+                raise ValueError(f'Invalid participant type. Must be one of: {", ".join(valid_types)}')
+            
+            # clean and validate phone number
+            phone = clean_phone_number(row.get('phone', ''))
+            if not phone:
+                raise ValueError('Invalid phone number format')
+            
+            # check for existing participant with same phone number
+            existing = Participant.query.filter_by(
+                conference_id=conference_id,
+                phone=phone
+            ).first()
+            
+            if existing:
+                # update existing participant
+                existing.first_name = row['first_name'].strip()
+                existing.last_name = row['last_name'].strip()
+                existing.participant_type = participant_type
+            else:
+                # create new participant
+                participant = Participant(
+                    conference_id=conference_id,
+                    first_name=row['first_name'].strip(),
+                    last_name=row['last_name'].strip(),
+                    phone=phone,
+                    participant_type=participant_type
+                )
+                db.session.add(participant)
+            
+            success_count += 1
+            
+        except Exception as e:
+            error_count += 1
+            error_messages.append(
+                f"Row {row_num}: Error processing {row.get('first_name', '')} {row.get('last_name', '')}: {str(e)}"
+            )
+    
     return {
         'success': success_count,
         'errors': error_count,
