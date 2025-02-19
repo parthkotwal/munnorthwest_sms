@@ -148,9 +148,6 @@ def try_read_csv(file):
 
 def get_participant_csv(csv_reader):
     """Extract unique participant types from CSV file"""
-    # Store current position
-    current_pos = csv_reader.line_num
-    
     # Get unique participant types
     types = set()
     for row in csv_reader:
@@ -158,14 +155,11 @@ def get_participant_csv(csv_reader):
         if participant_type:
             types.add(participant_type)
     
-    # Reset file position
-    if hasattr(csv_reader.reader, 'seekrows'):
-        csv_reader.reader.seekrows(0)
-    else:
-        # If seekrows is not available, we need to recreate the reader
-        csv_reader.reader = csv.reader(csv_reader.reader.file)
-        # Skip header row
-        next(csv_reader.reader)
+    # Reset file position to beginning
+    csv_reader.file.seek(0)
+
+    # Skip header row
+    next(csv_reader)
     
     return types
 
