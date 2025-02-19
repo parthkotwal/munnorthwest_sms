@@ -120,31 +120,6 @@ def dashboard():
         recent_messages=recent_messages,
         scheduled_messages=scheduled_messages
     )
-def try_read_csv(file):
-    """Try reading CSV with different encodings and handle BOM"""
-    encodings = ['utf-8', 'utf-8-sig', 'latin-1', 'cp1252']
-    
-    for encoding in encodings:
-        try:
-            # Reset file pointer
-            file.seek(0)
-            csv_file = TextIOWrapper(file, encoding=encoding)
-            reader = csv.DictReader(csv_file)
-            # Validate by reading first row
-            header_fields = set(reader.fieldnames or [])
-            
-            # Clean header fields - remove BOM and whitespace
-            header_fields = {field.strip().lstrip('\ufeff') for field in header_fields}
-            
-            return reader, header_fields
-            
-        except UnicodeDecodeError:
-            continue
-        except Exception as e:
-            current_app.logger.error(f"Error reading CSV with {encoding}: {str(e)}")
-            continue
-            
-    raise ValueError("Unable to read CSV file with any supported encoding")
 
 def get_participant_csv(csv_reader):
     """Extract unique participant types from CSV file"""
@@ -199,11 +174,33 @@ def upload_participants():
                     'message': 'Invalid file type. Please upload a CSV file.'
                 }), 400
 
-            session = db.create_scoped_session()
-
             try:
-                csv_reader, header_fields = try_read_csv(file)
+                csv_file = None
+                csv_reader = None
+                header_fields = set()
                 
+                encodings = ['utf-8', 'utf-8-sig', 'latin-1', 'cp1252']
+    
+                for encoding in encodings:
+                    try:
+                        # Reset file pointer
+                        file.seek(0)
+                        csv_file = TextIOWrapper(file, encoding=encoding)
+                        csv_reader = csv.DictReader(csv_file)
+                        # Validate by reading first row
+                        header_fields = set(csv_reader.fieldnames or [])
+                        
+                        # Clean header fields - remove BOM and whitespace
+                        header_fields = {field.strip().lstrip('\ufeff') for field in header_fields}
+                        
+                        break
+                        
+                    except UnicodeDecodeError:
+                        continue
+                    except Exception as e:
+                        current_app.logger.error(f"Error reading CSV with {encoding}: {str(e)}")
+                        continue
+
                 # Validate CSV structure
                 required_fields = {'first_name', 'last_name', 'phone', 'participant_type'}
                 
@@ -218,15 +215,27 @@ def upload_participants():
                         'message': f'Missing required columns: {", ".join(missing_fields)}'
                     }), 400
 
-                participant_types = get_participant_csv(csv_reader)
+                # Get unique participant types from CSV
+                participant_types = set()
+                # Store current position
+                current_pos = csv_file.tell()
+
+                for row in csv_reader:
+                    participant_type = row.get('participant_type', '').strip()
+                    if participant_type:
+                        participant_types.add(participant_type)
+                
+                # Reset file position
+                csv_file.seek(current_pos)
+                csv_reader = csv.DictReader(csv_file)
 
                 # Clear existing participants if checkbox is checked
                 if request.form.get('clear_existing') == 'yes':
-                    session.query(Participant).filter(
+                    Participant.query.filter(
                         Participant.conference_id == current_user.conference_id,
                         Participant.participant_type.in_(participant_types)
                     ).delete(synchronize_session='fetch')
-                    session.commit()
+                    db.session.commit()
 
                 results = process_participant_upload(csv_reader, current_user.conference_id)
 
@@ -242,8 +251,6 @@ def upload_participants():
                     'success': False,
                     'message': f'Error processing CSV file: {str(e)}'
                 }), 400
-            finally:
-                session.close()
 
         except Exception as e:
             return jsonify({
@@ -260,9 +267,6 @@ def process_participant_upload(csv_reader, conference_id):
     success_count = 0
     error_count = 0
     error_messages = []
-    
-    # Create a new session for this upload
-    session = db.create_scoped_session()
     
     try:
         for row_num, row in enumerate(csv_reader, start=2):  # Start at 2 to account for header row
@@ -308,6 +312,9 @@ def process_participant_upload(csv_reader, conference_id):
                     db.session.add(participant)
                 
                 success_count += 1
+
+                if success_count % 100 == 0:
+                    db.session.commit()
                 
             except Exception as e:
                 error_count += 1
@@ -315,18 +322,14 @@ def process_participant_upload(csv_reader, conference_id):
                     f"Row {row_num}: Error processing {row.get('first_name', '')} {row.get('last_name', '')}: {str(e)}"
                 )
             
-            if success_count % 100 == 0:
-                session.commit()
 
-        session.commit()
+        db.session.commit()
 
 
     except Exception as e:
-        session.rollback()
+        db.session.rollback()
         error_messages.append(f"Database error: {str(e)}")
-    
-    finally:
-        session.close()
+        raise
 
     return {
         'success': success_count,
