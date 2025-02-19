@@ -146,6 +146,29 @@ def try_read_csv(file):
             
     raise ValueError("Unable to read CSV file with any supported encoding")
 
+def get_participant_csv(csv_reader):
+    """Extract unique participant types from CSV file"""
+    # Store current position
+    current_pos = csv_reader.line_num
+    
+    # Get unique participant types
+    types = set()
+    for row in csv_reader:
+        participant_type = row.get('participant_type', '').strip()
+        if participant_type:
+            types.add(participant_type)
+    
+    # Reset file position
+    if hasattr(csv_reader.reader, 'seekrows'):
+        csv_reader.reader.seekrows(0)
+    else:
+        # If seekrows is not available, we need to recreate the reader
+        csv_reader.reader = csv.reader(csv_reader.reader.file)
+        # Skip header row
+        next(csv_reader.reader)
+    
+    return types
+
 @routes.route('/upload_participants', methods=['GET', 'POST'])
 @login_required
 def upload_participants():
@@ -193,13 +216,16 @@ def upload_participants():
                         'message': f'Missing required columns: {", ".join(missing_fields)}'
                     }), 400
 
+                participant_types = get_participant_csv(csv_reader)
                 # Clear existing participants if checkbox is checked
                 if request.form.get('clear_existing') == 'yes':
-                    Participant.query.filter_by(conference_id=current_user.conference_id).delete()
+                    Participant.query.filter(
+                        Participant.conference_id == current_user.conference_id,
+                        Participant.participant_type.in_(participant_types)
+                    ).delete(synchronize_session='fetch')
+                    db.session.commit()
 
                 results = process_participant_upload(csv_reader, current_user.conference_id)
-                db.session.commit()
-
                 return jsonify({
                     'success': True,
                     'message': f'Successfully imported {results["success"]} participants. {results["errors"]} errors occurred.',
