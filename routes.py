@@ -20,7 +20,7 @@ load_dotenv(".env")
 twilio_client = Client(os.environ.get('TWILIO_ACCOUNT_SID'), os.environ.get('TWILIO_AUTH_TOKEN'))
 twilio_number:str = os.environ.get('TWILIO_PHONE_NUMBER')
 
-# Initialize database w/ default conferences
+################### INITIAL STUFF ###################
 @routes.before_app_request
 def initialize_conferences():
     Conference.init_default_conferences()
@@ -120,6 +120,10 @@ def dashboard():
         recent_messages=recent_messages,
         scheduled_messages=scheduled_messages
     )
+
+
+################### UPLOADING PARTICIPANTS ###################
+
 def try_read_csv(file):
     """Try reading CSV with different encodings and handle BOM"""
     encodings = ['utf-8', 'utf-8-sig', 'latin-1', 'cp1252']
@@ -146,20 +150,14 @@ def try_read_csv(file):
             
     raise ValueError("Unable to read CSV file with any supported encoding")
 
-def get_participant_csv(csv_reader):
+def get_participant_csv(file):
     """Extract unique participant types from CSV file"""
     # Get unique participant types
-    types = set()
-    for row in csv_reader:
-        participant_type = row.get('participant_type', '').strip()
-        if participant_type:
-            types.add(participant_type)
-    
-    # Reset file position to beginning
-    csv_reader.file.seek(0)
+    file.seek(0)  # Reset file position
+    csv_reader = csv.DictReader(TextIOWrapper(file, encoding='utf-8'))  # Read CSV
 
-    # Skip header row
-    next(csv_reader)
+    # Extract unique participant types
+    types = {row.get('participant_type', '').strip() for row in csv_reader if row.get('participant_type', '').strip()}
     
     return types
 
@@ -210,7 +208,7 @@ def upload_participants():
                         'message': f'Missing required columns: {", ".join(missing_fields)}'
                     }), 400
 
-                participant_types = get_participant_csv(csv_reader)
+                participant_types = get_participant_csv(file)
                 # Clear existing participants if checkbox is checked
                 if request.form.get('clear_existing') == 'yes':
                     Participant.query.filter(
@@ -304,6 +302,8 @@ def process_participant_upload(csv_reader, conference_id):
         'errors': error_count,
         'error_messages': error_messages
     }
+
+################### MANAGING CURRENT PARTICIPANTS ###################
 
 @routes.route('/manage_participants')
 @login_required
@@ -400,6 +400,8 @@ def clean_phone_number(phone:str) -> str:
     elif len(phone) == 12 and phone.startswith('+1'):
         return phone
     return None
+
+################### MESSAGING ###################
 
 @routes.route('/send_message', methods=['GET', 'POST'])
 @login_required
@@ -642,7 +644,10 @@ def send_sms_twilio(to:str, message:str):
         return {'status': 'sent', 'sid': message.sid}
     except Exception as e:
         return {'status': 'failed', 'error': str(e)}
-    
+
+
+################### SCHEDULING ###################
+
 @routes.route('/cancel_scheduled_message/<int:message_id>', methods=['POST'])
 @login_required
 def cancel_scheduled_message(message_id):
