@@ -134,13 +134,15 @@ def try_read_csv(file):
             file.seek(0)
             csv_file = TextIOWrapper(file, encoding=encoding)
             reader = csv.DictReader(csv_file)
+            participant_types = {row.get('participant_type', '').strip() for row in reader if row.get('participant_type', '').strip()}
+
             # Validate by reading first row
             header_fields = set(reader.fieldnames or [])
             
             # Clean header fields - remove BOM and whitespace
             header_fields = {field.strip().lstrip('\ufeff') for field in header_fields}
             
-            return reader, header_fields
+            return reader, header_fields, participant_types
             
         except UnicodeDecodeError:
             continue
@@ -149,17 +151,6 @@ def try_read_csv(file):
             continue
             
     raise ValueError("Unable to read CSV file with any supported encoding")
-
-def get_participant_csv(file):
-    """Extract unique participant types from CSV file"""
-    # Get unique participant types
-    file.seek(0)  # Reset file position
-    csv_reader = csv.DictReader(TextIOWrapper(file, encoding='utf-8'))  # Read CSV
-
-    # Extract unique participant types
-    types = {row.get('participant_type', '').strip() for row in csv_reader if row.get('participant_type', '').strip()}
-    
-    return types
 
 @routes.route('/upload_participants', methods=['GET', 'POST'])
 @login_required
@@ -192,7 +183,7 @@ def upload_participants():
                 }), 400
 
             try:
-                csv_reader, header_fields = try_read_csv(file)
+                csv_reader, header_fields, participant_types = try_read_csv(file)
                 
                 # Validate CSV structure
                 required_fields = {'first_name', 'last_name', 'phone', 'participant_type'}
@@ -208,7 +199,6 @@ def upload_participants():
                         'message': f'Missing required columns: {", ".join(missing_fields)}'
                     }), 400
 
-                participant_types = get_participant_csv(file)
                 # Clear existing participants if checkbox is checked
                 if request.form.get('clear_existing') == 'yes':
                     Participant.query.filter(
