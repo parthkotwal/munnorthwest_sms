@@ -47,10 +47,12 @@ def init_scheduler(app):
         with app.app_context():
             # Get a database session
             session = db.session()
-            
+            acquired = False
+
             try:
+                acquired = get_lock(session, 'scheduler_lock')
                 # Try to acquire the lock
-                if not get_lock(session, 'scheduler_lock'):
+                if not acquired:
                     app.logger.info("Another worker is processing messages, skipping this run")
                     return
 
@@ -87,8 +89,9 @@ def init_scheduler(app):
                 app.logger.error(f"Scheduler error: {str(e)}")
                 
             finally:
-                # Always release the lock
-                release_lock(session, 'scheduler_lock')
+                if acquired:
+                    # Always release the lock
+                    release_lock(session, 'scheduler_lock')
                 session.close()
 
     # Only initialize scheduler on the first worker

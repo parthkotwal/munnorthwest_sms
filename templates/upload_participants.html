@@ -121,7 +121,12 @@
     function handleDrop(e) {
         const dt = e.dataTransfer;
         const file = dt.files[0];
+        if (!file) return;
         handleFile(file);
+        
+        const dataTransfer = new DataTransfer();
+        dataTransfer.items.add(file);
+        fileUpload.files = dataTransfer.files;
     }
 
     // Handle file selection via input
@@ -129,17 +134,32 @@
         handleFile(e.target.files[0]);
     });
 
-    // function handleFile(file) {
-    //     if (file && file.name.toLowerCase().endsWith('.csv')) {
-    //         uploadPrompt.classList.add('hidden');
-    //         fileSelected.classList.remove('hidden');
-    //         fileName.textContent = file.name;
-    //         submitButton.disabled = false;
-    //     } else {
-    //         alert('Please select a CSV file');
-    //         clearFileSelection();
-    //     }
-    // }
+    function handleFile(file) {
+        if (!file) {
+            alert('No file selected');
+            clearFileSelection();
+            return;
+        }
+
+        if (!file.name.toLowerCase().endsWith('.csv')) {
+            alert('Please select a CSV file');
+            clearFileSelection();
+            return;
+        }
+
+        // Check file size (10MB)
+        if (file.size > 10 * 1024 * 1024) {
+            alert('File size must be less than 10MB');
+            clearFileSelection();
+            return;
+        }
+
+        uploadPrompt.classList.add('hidden');
+        fileSelected.classList.remove('hidden');
+        fileName.textContent = file.name;
+        submitButton.disabled = false;
+    }
+    
 
     function clearFileSelection() {
         fileUpload.value = '';
@@ -214,33 +234,6 @@
             submitButton.innerHTML = 'Upload Participants';
         });
     });
-
-    // Also update the file handling code to be more robust
-    function handleFile(file) {
-        if (!file) {
-            alert('No file selected');
-            clearFileSelection();
-            return;
-        }
-
-        if (!file.name.toLowerCase().endsWith('.csv')) {
-            alert('Please select a CSV file');
-            clearFileSelection();
-            return;
-        }
-
-        // Check file size (10MB)
-        if (file.size > 10 * 1024 * 1024) {
-            alert('File size must be less than 10MB');
-            clearFileSelection();
-            return;
-        }
-
-        uploadPrompt.classList.add('hidden');
-        fileSelected.classList.remove('hidden');
-        fileName.textContent = file.name;
-        submitButton.disabled = false;
-    }
 </script>
     
 {% endblock %}
