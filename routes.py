@@ -134,15 +134,13 @@ def try_read_csv(file):
             file.seek(0)
             csv_file = TextIOWrapper(file, encoding=encoding)
             reader = csv.DictReader(csv_file)
-            participant_types = {row.get('participant_type', '').strip() for row in reader if row.get('participant_type', '').strip()}
-
             # Validate by reading first row
             header_fields = set(reader.fieldnames or [])
             
             # Clean header fields - remove BOM and whitespace
             header_fields = {field.strip().lstrip('\ufeff') for field in header_fields}
             
-            return reader, header_fields, participant_types
+            return reader, header_fields
             
         except UnicodeDecodeError:
             continue
@@ -183,7 +181,7 @@ def upload_participants():
                 }), 400
 
             try:
-                csv_reader, header_fields, participant_types = try_read_csv(file)
+                csv_reader, header_fields = try_read_csv(file)
                 
                 # Validate CSV structure
                 required_fields = {'first_name', 'last_name', 'phone', 'participant_type'}
@@ -201,13 +199,11 @@ def upload_participants():
 
                 # Clear existing participants if checkbox is checked
                 if request.form.get('clear_existing') == 'yes':
-                    Participant.query.filter(
-                        Participant.conference_id == current_user.conference_id,
-                        Participant.participant_type.in_(participant_types)
-                    ).delete(synchronize_session='fetch')
-                    db.session.commit()
+                    Participant.query.filter_by(conference_id=current_user.conference_id).delete()
 
                 results = process_participant_upload(csv_reader, current_user.conference_id)
+                db.session.commit()
+
                 return jsonify({
                     'success': True,
                     'message': f'Successfully imported {results["success"]} participants. {results["errors"]} errors occurred.',
