@@ -122,19 +122,22 @@ def create_app(config_class=None):
     app.config['SECRET_KEY'] = os.environ.get("FLASK_SECRET_KEY")
     # app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///munnw_sms.db'
     # Convert Railway's DATABASE_URL to a format SQLAlchemy accepts
+    
+    # Choose database based on environment
     database_url = os.getenv("DATABASE_URL")
-    # print(f"Database URL: {database_url}")
-    if not database_url:
-        raise RuntimeError("DATABASE_URL is not set. Check Railway environment variables.")
-
-    # Fix PostgreSQL URL format if needed
-    if database_url.startswith("postgres://"):
-        database_url = database_url.replace("postgres://", "postgresql://", 1)
+    
+    if database_url:
+        if database_url.startswith("postgres://"):
+            database_url = database_url.replace("postgres://", "postgresql://", 1)
+        app.config['SQLALCHEMY_DATABASE_URI'] = database_url
+    else:
+        # Default to SQLite if no DATABASE_URL is set
+        app.config['SQLALCHEMY_DATABASE_URI'] = "sqlite:///munnw_sms.db"
 
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
     app.config['UPLOAD_FOLDER'] = 'uploads'
 
-    app.config['SQLALCHEMY_DATABASE_URI'] = database_url
+    # app.config['SQLALCHEMY_DATABASE_URI'] = database_url
     # print(f"SQLAlchemy URI: {app.config['SQLALCHEMY_DATABASE_URI']}")
 
     # Initialize db with app here
