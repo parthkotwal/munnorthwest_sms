@@ -317,11 +317,11 @@ def manage_participants():
     participants = query.order_by(Participant.last_name).all()
     participant_types = ['Delegate', 'Advisor', 'Staff', 'Secretariat']
 
-    # Return only the participant table if it's an AJAX request
     if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
         return render_template('partials/participants_table.html', participants=participants, participant_types=participant_types)
-
+ 
     return render_template('manage_participants.html', participants=participants, participant_types=participant_types, search=search, current_type=participant_type)
+
 
 @routes.route('/participant/<int:participant_id>', methods=['GET'])
 @login_required

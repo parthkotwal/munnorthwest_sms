@@ -18,80 +18,271 @@
             </div>
         </div>
 
-        <div class="mt-4 flex flex-wrap space-x-3">
-            <h3 class="font-medium text-gray-600 mb-4">Navigate to:</h3>
-            {% for type in participant_types %}
-            <a href="#{{ type }}Table" class="text-blue-600 hover:underline font-medium">{{ type }}s</a>
-            {% endfor %}
+        <!-- Table of Contents -->
+        <div class="mt-4 mb-4">
+            <div class="space-x-4">
+                <p class="text-black-600">Navigate:</p>
+                {% for type in participant_types %}
+                <a href="#{{ type }}Table" class="text-blue-600 hover:text-blue-900 text-sm">
+                    {{ type }}
+                </a>
+                {% endfor %}
+            </div>
         </div>
 
-        <!-- Live Search Bar -->
+        <!-- Live Search -->
         <div class="mt-4">
-            <input type="text" id="searchInput" placeholder="Search by name or phone"
-                   class="border border-gray-300 rounded-md px-4 py-2 w-full md:w-1/3 focus:ring-blue-500 focus:border-blue-500"
-                   oninput="fetchParticipants()">
-            <select id="typeFilter" class="border border-gray-300 rounded-md px-4 py-2 focus:ring-blue-500 focus:border-blue-500"
-                    onchange="fetchParticipants()">
+            <input type="text" id="searchInput" placeholder="Search by first name, last name, or phone" class="border border-gray-300 rounded-md px-4 py-2 w-full md:w-1/3 focus:ring-blue-500 focus:border-blue-500" oninput="fetchParticipants()">
+            <select id="typeFilter" class="border border-gray-300 rounded-md px-4 py-2 focus:ring-blue-500 focus:border-blue-500" onchange="fetchParticipants()">
                 <option value="">All Types</option>
                 {% for type in participant_types %}
                 <option value="{{ type }}">{{ type }}</option>
                 {% endfor %}
             </select>
         </div>
-
-        <!-- Participants Table -->
+        
+        
+        <!-- Participant Tables -->
         <div class="mt-4" id="participantsTable">
-            {% for type in participant_types %}
-            <div class="mb-8" id="{{ type }}Table">
-                <h3 class="text-lg font-medium text-gray-900 mb-4">{{ type }}s</h3>
-                <div class="overflow-x-auto">
-                    <table class="min-w-full divide-y divide-gray-200">
-                        <thead class="bg-gray-50">
-                            <tr>
-                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
-                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Phone</th>
-                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
-                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody class="bg-white divide-y divide-gray-200 participant-list">
-                            {% for participant in participants if participant.participant_type == type %}
-                            <tr>
-                                <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{{ participant.first_name }} {{ participant.last_name }}</td>
-                                <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{{ participant.phone }}</td>
-                                <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{{ participant.participant_type }}</td>
-                                <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                                    <button onclick="editParticipant({{ participant.id }})" class="text-blue-600 hover:text-blue-900 mr-3">Edit</button>
-                                    <button onclick="deleteParticipant({{ participant.id }})" class="text-red-600 hover:text-red-900">Delete</button>
-                                </td>
-                            </tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
+                {% for type in participant_types %}
+                <div class="mb-8" id="{{ type }}Table">
+                    <h3 class="text-lg font-medium text-gray-900 mb-4">{{ type }}s</h3>
+                    <div class="overflow-x-auto">
+                        <table class="min-w-full divide-y divide-gray-200">
+                            <thead class="bg-gray-50">
+                                <tr>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Phone</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody class="bg-white divide-y divide-gray-200 participant-list">
+                                {% for participant in participants if participant.participant_type == type %}
+                                <tr>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{{ participant.first_name }} {{ participant.last_name }}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{{ participant.phone }}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{{ participant.participant_type }}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                                        <button onclick="editParticipant({{ participant.id }})" class="text-blue-600 hover:text-blue-900 mr-3">Edit</button>
+                                        <button onclick="deleteParticipant({{ participant.id }})" class="text-red-600 hover:text-red-900">Delete</button>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
-            </div>
-            {% endfor %}
+                {% endfor %}
+        </div>
+    </div>
+</div>
+
+<!-- Add/Edit Participant Modal -->
+<div id="participantModal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full">
+    <div class="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
+        <div class="mt-3">
+            <h3 class="text-lg font-medium text-gray-900" id="modalTitle">Add Participant</h3>
+            <form id="participantForm" class="mt-4">
+                <input type="hidden" id="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" id="participantId" name="id">
+                <div class="space-y-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700">First Name</label>
+                        <input type="text" id="firstName" name="first_name" required
+                               class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700">Last Name</label>
+                        <input type="text" id="lastName" name="last_name" required
+                               class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700">Phone</label>
+                        <input type="tel" id="phone" name="phone" required
+                               class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700">Type</label>
+                        <select id="participantType" name="participant_type" required
+                                class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500">
+                            {% for type in participant_types %}
+                            <option value="{{ type }}">{{ type }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                </div>
+                <div class="mt-5 flex justify-end space-x-2">
+                    <button type="button" onclick="closeModal()"
+                            class="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-md">
+                        Cancel
+                    </button>
+                    <button type="submit"
+                            class="px-4 py-2 text-sm font-medium text-white conference-primary hover:opacity-90 rounded-md">
+                        Save
+                    </button>
+                </div>
+            </form>            
+        </div>
+    </div>
+</div>
+
+<!-- Delete Confirmation Modal -->
+<div id="deleteModal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full">
+    <div class="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
+        <h3 class="text-lg font-medium text-gray-900">Confirm Delete</h3>
+        <p class="mt-2 text-sm text-gray-500">Are you sure you want to delete this participant? This action cannot be undone.</p>
+        <div class="mt-4 flex justify-end space-x-2">
+            <button onclick="closeDeleteModal()"
+                    class="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-md">
+                Cancel
+            </button>
+            <button onclick="confirmDelete()"
+                    class="px-4 py-2 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-md">
+                Delete
+            </button>
         </div>
     </div>
 </div>
 
 {% block scripts %}
 <script>
-    // Live Search Function
+    let currentParticipantId = null;
+
     function fetchParticipants() {
         const searchQuery = document.getElementById('searchInput').value;
         const typeFilter = document.getElementById('typeFilter').value;
 
+        fetch(`/manage_participants?search=${searchQuery}&type=${typeFilter}`, {
+            headers: { "X-Requested-With": "XMLHttpRequest" }
+        })
+        .then(response => response.text())
+        .then(data => {
+            const parser = new DOMParser();
+            const newDocument = parser.parseFromString(data, 'text/html');
+            const newTable = newDocument.getElementById('participantsTable').innerHTML;
+            document.getElementById('participantsTable').innerHTML = newTable;
+        })
+        .catch(error => console.error('Error fetching participants:', error));
+    }
+
+    function fetchParticipants() {
+        const searchQuery = document.getElementById('searchInput').value;
+        const typeFilter = document.getElementById('typeFilter').value;
         fetch(`/manage_participants?search=${searchQuery}&type=${typeFilter}`)
             .then(response => response.text())
             .then(data => {
-                const parser = new DOMParser();
+            const parser = new DOMParser();
                 const newDocument = parser.parseFromString(data, 'text/html');
                 const newTable = newDocument.getElementById('participantsTable').innerHTML;
                 document.getElementById('participantsTable').innerHTML = newTable;
             })
             .catch(error => console.error('Error fetching participants:', error));
     }
+
+    // Show Add Participant Modal
+    function showAddParticipantModal() {
+        document.getElementById('modalTitle').textContent = 'Add Participant';
+        document.getElementById('participantForm').reset();
+        document.getElementById('participantId').value = '';
+        document.getElementById('participantModal').classList.remove('hidden');
+    }
+
+    // Show Edit Participant Modal
+    function editParticipant(id) {
+        fetch(`/participant/${id}`)
+            .then(response => response.json())
+            .then(data => {
+                document.getElementById('modalTitle').textContent = 'Edit Participant';
+                document.getElementById('participantId').value = data.id;
+                document.getElementById('firstName').value = data.first_name;
+                document.getElementById('lastName').value = data.last_name;
+                document.getElementById('phone').value = data.phone;
+                document.getElementById('participantType').value = data.participant_type;
+                document.getElementById('participantModal').classList.remove('hidden');
+            }).catch(error => console.error('Error fetching participant:', error));
+    }
+
+    // Close Modal
+    function closeModal() {
+        document.getElementById('participantModal').classList.add('hidden');
+    }
+
+    // Show Delete Confirmation Modal
+    function deleteParticipant(id) {
+        currentParticipantId = id;
+        document.getElementById('deleteModal').classList.remove('hidden');
+    }
+
+    // Close Delete Confirmation Modal
+    function closeDeleteModal() {
+        document.getElementById('deleteModal').classList.add('hidden');
+        currentParticipantId = null;
+    }
+
+    // Get CSRF token from hidden input field
+    function getCsrfToken() {
+        return document.getElementById('csrf_token').value;
+    }
+
+    // Confirm and Delete Participant
+    function confirmDelete() {
+        if (currentParticipantId) {
+            fetch(`/participant/${currentParticipantId}`, {
+                method: 'DELETE',
+                headers: {
+                    'X-CSRFToken': getCsrfToken(),
+                    'Content-Type': 'application/json'
+                }
+            }).then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    window.location.reload();
+                } else {
+                    console.error('Error deleting participant:', data);
+                }
+            }).catch(error => console.error('Error:', error));
+        }
+    }
+
+
+    // Handle Add/Edit Participant Submission
+    document.getElementById('participantForm').addEventListener('submit', function(e) {
+        e.preventDefault();
+
+        console.log("Submitting participant form...");
+
+        const formData = new FormData(this);
+        const id = formData.get('id');
+        const method = id ? 'PUT' : 'POST';
+        const url = id ? `/participant/${id}` : '/participant';  // ✅ Fixed template literal syntax
+
+        const payload = JSON.stringify(Object.fromEntries(formData));
+
+        console.log("Sending request to:", url, "Method:", method, "Data:", payload);
+
+        fetch(url, {
+            method: method,
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': getCsrfToken()
+            },
+            body: payload
+        })
+        .then(response => response.json())
+        .then(data => {
+            console.log("Server response:", data);
+            if (data.status === 'success') {
+                window.location.reload();
+            } else {
+                console.error('Error saving participant:', data);
+            }
+        })
+        .catch(error => console.error('Fetch error:', error));
+    });
+
+
 </script>
+
 {% endblock %}
 {% endblock %}
