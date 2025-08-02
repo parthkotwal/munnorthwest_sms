@@ -20,6 +20,7 @@ load_dotenv(".env")
 twilio_client = Client(os.environ.get('TWILIO_ACCOUNT_SID'), os.environ.get('TWILIO_AUTH_TOKEN'))
 twilio_number:str = os.environ.get('TWILIO_PHONE_NUMBER')
 
+
 ################### INITIAL STUFF ###################
 @routes.before_app_request
 def initialize_conferences():
