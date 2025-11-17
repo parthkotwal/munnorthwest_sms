@@ -135,11 +135,16 @@ def try_read_csv(file):
             file.seek(0)
             csv_file = TextIOWrapper(file, encoding=encoding)
             reader = csv.DictReader(csv_file)
-            # Validate by reading first row
-            header_fields = set(reader.fieldnames or [])
-            
+
+            if not reader.fieldnames:
+                continue
+
             # Clean header fields - remove BOM and whitespace
-            header_fields = {field.strip().lstrip('\ufeff') for field in header_fields}
+            cleaned_headers = [
+                field.strip().lstrip('\ufeff') for field in reader.fieldnames
+            ]
+            reader.fieldnames = cleaned_headers
+            header_fields = set(cleaned_headers)
             
             return reader, header_fields
             
@@ -236,8 +241,12 @@ def process_participant_upload(csv_reader, conference_id):
     
     for row_num, row in enumerate(csv_reader, start=2):  # Start at 2 to account for header row
         try:
-            # trim whitespace
-            row = {k: v.strip() if v else v for k, v in row.items()}
+            # trim whitespace and normalize keys (handles BOM or stray spaces)
+            row = {
+                (k.strip().lstrip('\ufeff') if isinstance(k, str) else k):
+                (v.strip() if isinstance(v, str) else v)
+                for k, v in row.items()
+            }
 
             # validate required fields
             if not all(row.get(field, '').strip() for field in ['first_name', 'last_name', 'phone']):
