@@ -27,12 +27,12 @@
     {% if current_user.is_authenticated and current_user.conference is not none %}
     <nav class="conference-primary text-white shadow-lg">
         <div class="container mx-auto px-4 sm:px-6 py-3">
-            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                <div class="flex items-center justify-center sm:justify-start">
+            <div class="flex flex-row flex-wrap items-center justify-between gap-3">
+                <div class="flex items-center justify-start">
                     <img src="{{ conference.logo_path }}" alt="{{ conference.name }}" class="h-8">
                     <span class="ml-3 font-semibold text-center sm:text-left">{{ conference.name }} SMS Admin</span>
                 </div>
-                <div class="flex flex-col sm:flex-row items-center gap-2 sm:gap-4">
+                <div class="flex flex-row items-center gap-4">
                     <a href="{{ url_for('routes.dashboard') }}" class="hover:text-gray-200">Dashboard</a>
                     <a href="{{ url_for('routes.manage_participants') }}" class="hover:text-gray-200">Participants</a>
                     <a href="{{ url_for('routes.logout') }}" class="hover:text-gray-200">Logout</a>

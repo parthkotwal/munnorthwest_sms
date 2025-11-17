@@ -205,7 +205,7 @@ def upload_participants():
 
                 # Clear existing participants if checkbox is checked
                 if request.form.get('clear_existing') == 'yes':
-                    Participant.query.filter_by(conference_id=current_user.conference_id).delete()
+                    clear_conference_participants(current_user.conference_id)
 
                 results = process_participant_upload(csv_reader, current_user.conference_id)
                 db.session.commit()
@@ -299,6 +299,23 @@ def process_participant_upload(csv_reader, conference_id):
         'error_messages': error_messages
     }
 
+def clear_conference_participants(conference_id):
+    """Delete all participants (and related message recipients) for a conference."""
+    participant_ids = db.session.execute(
+        db.select(Participant.id).where(Participant.conference_id == conference_id)
+    ).scalars().all()
+
+    if not participant_ids:
+        return
+
+    MessageRecipient.query.filter(
+        MessageRecipient.participant_id.in_(participant_ids)
+    ).delete(synchronize_session=False)
+
+    Participant.query.filter(
+        Participant.id.in_(participant_ids)
+    ).delete(synchronize_session=False)
+
 ################### MANAGING CURRENT PARTICIPANTS ###################
 
 @routes.route('/manage_participants')
@@ -313,11 +330,13 @@ def manage_participants():
     query = Participant.query.filter_by(conference_id=current_user.conference_id)
     
     if search:
+        trimmed_search = search.strip()
         query = query.filter(
             db.or_(
-                Participant.first_name.ilike(f'%{search}%'),
-                Participant.last_name.ilike(f'%{search}%'),
-                Participant.phone.ilike(f'%{search}%')
+                Participant.first_name.ilike(f'%{trimmed_search}%'),
+                Participant.last_name.ilike(f'%{trimmed_search}%'),
+                Participant.phone.ilike(f'%{trimmed_search}%'),
+                db.func.concat(Participant.first_name, ' ', Participant.last_name).ilike(f'%{trimmed_search}%')
             )
         )
     
@@ -385,6 +404,21 @@ def delete_participant(participant_id):
     db.session.delete(participant)
     db.session.commit()
     return jsonify({'status': 'success', 'message': 'Participant deleted'})
+
+@routes.route('/participants/clear', methods=['POST'])
+@login_required
+def clear_all_participants():
+    if not current_user.conference_id:
+        return jsonify({'status': 'error', 'message': 'No conference selected'}), 400
+    
+    try:
+        clear_conference_participants(current_user.conference_id)
+        db.session.commit()
+        return jsonify({'status': 'success'})
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Error clearing participants: {str(e)}")
+        return jsonify({'status': 'error', 'message': 'Failed to delete participants'}), 500
 
 def clean_phone_number(phone:str) -> str:
     """Clean and validate phone number"""

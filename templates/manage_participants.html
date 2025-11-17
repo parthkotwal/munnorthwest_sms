@@ -15,6 +15,10 @@
                    class="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white conference-primary hover:opacity-90">
                     Upload Participants
                 </a>
+                <button onclick="showDeleteAllModal()"
+                        class="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-red-600 hover:bg-red-700">
+                    Delete All
+                </button>
             </div>
         </div>
 
@@ -145,13 +149,39 @@
     </div>
 </div>
 
+<!-- Delete All Confirmation Modal -->
+<div id="deleteAllModal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full">
+    <div class="relative top-20 mx-auto p-5 border w-full max-w-lg shadow-lg rounded-md bg-white">
+        <h3 class="text-lg font-medium text-gray-900">Delete All Participants</h3>
+        <p class="mt-2 text-sm text-gray-500">
+            This action will remove every participant in the current conference. Type <span class="font-semibold">'delete all'</span> to confirm.
+        </p>
+        <input type="text" id="deleteAllConfirmInput"
+               class="mt-4 border border-gray-300 rounded-md px-4 py-2 w-full focus:ring-red-500 focus:border-red-500"
+               placeholder="Type delete all to confirm">
+        <div class="mt-4 flex justify-end space-x-2">
+            <button onclick="closeDeleteAllModal()"
+                    class="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-md">
+                Cancel
+            </button>
+            <button id="confirmDeleteAllButton" onclick="confirmDeleteAll()" disabled
+                    class="px-4 py-2 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-md disabled:opacity-50 disabled:cursor-not-allowed">
+                Delete All
+            </button>
+        </div>
+    </div>
+</div>
+
 {% block scripts %}
 <script>
     let currentParticipantId = null;
+    const deleteAllModal = document.getElementById('deleteAllModal');
+    const deleteAllInput = document.getElementById('deleteAllConfirmInput');
+    const confirmDeleteAllButton = document.getElementById('confirmDeleteAllButton');
 
     function fetchParticipants() {
-        const searchQuery = document.getElementById('searchInput').value;
-        const typeFilter = document.getElementById('typeFilter').value;
+        const searchQuery = encodeURIComponent(document.getElementById('searchInput').value);
+        const typeFilter = encodeURIComponent(document.getElementById('typeFilter').value);
 
         fetch(`/manage_participants?search=${searchQuery}&type=${typeFilter}`, {
             headers: { "X-Requested-With": "XMLHttpRequest" }
@@ -167,8 +197,8 @@
     }
 
     function fetchParticipants() {
-        const searchQuery = document.getElementById('searchInput').value;
-        const typeFilter = document.getElementById('typeFilter').value;
+        const searchQuery = encodeURIComponent(document.getElementById('searchInput').value);
+        const typeFilter = encodeURIComponent(document.getElementById('typeFilter').value);
         fetch(`/manage_participants?search=${searchQuery}&type=${typeFilter}`)
             .then(response => response.text())
             .then(data => {
@@ -220,6 +250,24 @@
         currentParticipantId = null;
     }
 
+    function showDeleteAllModal() {
+        deleteAllInput.value = '';
+        updateDeleteAllButtonState();
+        deleteAllModal.classList.remove('hidden');
+        deleteAllInput.focus();
+    }
+
+    function closeDeleteAllModal() {
+        deleteAllModal.classList.add('hidden');
+    }
+
+    function updateDeleteAllButtonState() {
+        const matches = deleteAllInput.value.trim().toLowerCase() === 'delete all';
+        confirmDeleteAllButton.disabled = !matches;
+    }
+
+    deleteAllInput.addEventListener('input', updateDeleteAllButtonState);
+
     // Get CSRF token from hidden input field
     function getCsrfToken() {
         return document.getElementById('csrf_token').value;
@@ -243,6 +291,27 @@
                 }
             }).catch(error => console.error('Error:', error));
         }
+    }
+
+    function confirmDeleteAll() {
+        if (confirmDeleteAllButton.disabled) return;
+
+        fetch('/participants/clear', {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': getCsrfToken(),
+                'Content-Type': 'application/json'
+            },
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.status === 'success') {
+                window.location.reload();
+            } else {
+                console.error('Error deleting participants:', data);
+            }
+        })
+        .catch(error => console.error('Error:', error));
     }
 
 
